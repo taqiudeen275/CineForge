@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #f7f7f8;
+  --surface: #ffffff;
+  --surface-raised: #f0f0f3;
+  --text: #17171b;
+  --muted: #6f7078;
+  --subtle: #a7a8b0;
+  --line: #dedee4;
+  --accent: #6d5dfc;
+  --accent-strong: #5747ef;
+  --danger: #c83f55;
+  --success: #168765;
+  --focus: #897dff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #0d0d11;
+    --surface: #141419;
+    --surface-raised: #1b1b22;
+    --text: #f3f3f6;
+    --muted: #a1a1aa;
+    --subtle: #6d6e78;
+    --line: #2a2a33;
+    --accent: #8b7cff;
+    --accent-strong: #a095ff;
+    --danger: #f07183;
+    --success: #43c59e;
+    --focus: #a095ff;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { min-height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.muted { color: var(--muted); }
+.hairline { border-color: var(--line); }

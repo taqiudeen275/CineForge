@@ -1,0 +1,23 @@
+{
+  "name": "cineforge",
+  "private": true,
+  "packageManager": "bun@1.3.5",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun --filter @cineforge/web dev",
+    "build": "bun --filter '*' build",
+    "typecheck": "bun --filter '*' typecheck",
+    "test": "bun --filter '*' test",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "api:generate": "bun --filter @cineforge/api-client generate"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "latest",
+    "@types/bun": "^1.3.14",
+    "bun-types": "^1.3.14"
+  }
+}

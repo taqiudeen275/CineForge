@@ -1,0 +1,25 @@
+# JavaScript
+node_modules/
+.next/
+coverage/
+bun-error.log
+
+# Go
+bin/
+*.test
+*.out
+
+# Local environment
+.env
+.env.local
+!.env.example
+
+# Local infrastructure
+.data/
+tmp/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

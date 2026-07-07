@@ -1,0 +1,17 @@
+{
+  "name": "@cineforge/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "generate": "openapi-typescript ../../api/openapi.yaml -o src/schema.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "openapi-typescript": "latest",
+    "typescript": "latest"
+  }
+}

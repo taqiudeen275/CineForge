@@ -1,0 +1,1053 @@
+openapi: 3.1.0
+info:
+  title: CineForge Control API
+  version: 0.1.0
+  description: Account, workspace, project, library, media-ingestion, and audit foundation.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+tags:
+  - name: Auth
+  - name: Account
+  - name: Workspaces
+  - name: Projects
+  - name: Libraries
+  - name: Media
+  - name: Audit
+paths:
+  /auth/csrf:
+    get:
+      tags: [Auth]
+      security: []
+      operationId: getCsrfToken
+      responses:
+        '200':
+          description: CSRF token and matching readable cookie.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrfToken]
+                properties:
+                  csrfToken: { type: string }
+  /auth/session:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: createSession
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionExchange' }
+      responses:
+        '201':
+          description: Session established.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, sessionId, requiresVerification]
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+                  sessionId: { type: string, format: uuid }
+                  requiresVerification: { type: boolean }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/sessions:
+    get:
+      tags: [Auth]
+      operationId: listSessions
+      responses:
+        '200':
+          description: Active account sessions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionList' }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/sessions/{sessionId}:
+    delete:
+      tags: [Auth]
+      operationId: revokeSession
+      parameters:
+        - { $ref: '#/components/parameters/SessionId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '204': { description: Revoked }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '204': { description: Logged out }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      operationId: logoutAll
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '204': { description: All sessions revoked }
+        default: { $ref: '#/components/responses/Problem' }
+  /me:
+    get:
+      tags: [Account]
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current user.
+          content: { application/json: { schema: { $ref: '#/components/schemas/User' } } }
+        default: { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [Account]
+      operationId: updateCurrentUser
+      parameters:
+        - { $ref: '#/components/parameters/IfMatch' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProfileUpdate' } } }
+      responses:
+        '200':
+          description: Updated profile.
+          content: { application/json: { schema: { $ref: '#/components/schemas/User' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /me/deletion:
+    post:
+      tags: [Account]
+      operationId: scheduleAccountDeletion
+      description: Requires recent authentication and an idempotency key.
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '202':
+          description: Deletion scheduled.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AccountDeletionRequest' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /me/deletion/cancel:
+    post:
+      tags: [Account]
+      operationId: cancelAccountDeletion
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '204': { description: Deletion cancelled }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces:
+    get:
+      tags: [Workspaces]
+      operationId: listWorkspaces
+      responses:
+        '200':
+          description: Workspaces visible to the caller.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Workspace' }
+        default: { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Workspaces]
+      operationId: createWorkspace
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 120 }
+      responses:
+        '201':
+          description: Team workspace created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Workspace' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/bootstrap:
+    post:
+      tags: [Workspaces]
+      operationId: bootstrapPersonalWorkspace
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200':
+          description: Existing or newly created personal workspace.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Workspace' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}:
+    delete:
+      tags: [Workspaces]
+      operationId: trashWorkspace
+      description: Requires recent authentication and an idempotency key.
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '204': { description: Workspace moved to trash lifecycle }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/restore:
+    post:
+      tags: [Workspaces]
+      operationId: restoreWorkspace
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '204': { description: Workspace restored }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/members:
+    get:
+      tags: [Workspaces]
+      operationId: listMembers
+      parameters: [{ $ref: '#/components/parameters/WorkspaceId' }]
+      responses:
+        '200':
+          description: Workspace memberships.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Membership' }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/members/{memberId}:
+    patch:
+      tags: [Workspaces]
+      operationId: updateMember
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/MemberId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MemberUpdate' } } }
+      responses:
+        '200':
+          description: Updated membership.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Membership' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/invitations:
+    post:
+      tags: [Workspaces]
+      operationId: createInvitation
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/InvitationCreate' } } }
+      responses:
+        '201':
+          description: Invitation created and mailed.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Invitation' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /invitations/accept:
+    post:
+      tags: [Workspaces]
+      operationId: acceptInvitation
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Invitation accepted.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Workspace' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/ownership:
+    post:
+      tags: [Workspaces]
+      operationId: transferOwnership
+      description: Requires recent authentication.
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [memberId]
+              properties:
+                memberId: { type: string, format: uuid }
+      responses:
+        '204': { description: Ownership transferred }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/budget-policy:
+    get:
+      tags: [Workspaces]
+      operationId: getBudgetPolicy
+      parameters: [{ $ref: '#/components/parameters/WorkspaceId' }]
+      responses:
+        '200':
+          description: Workspace spend policy.
+          content: { application/json: { schema: { $ref: '#/components/schemas/BudgetPolicy' } } }
+        default: { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [Workspaces]
+      operationId: updateBudgetPolicy
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/BudgetPolicyUpdate' } } }
+      responses:
+        '200':
+          description: Updated spend policy.
+          content: { application/json: { schema: { $ref: '#/components/schemas/BudgetPolicy' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { name: status, in: query, schema: { type: string, enum: [active, archived, trashed] } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Projects.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+        default: { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Projects]
+      operationId: createProject
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProjectSettings' } } }
+      responses:
+        '201':
+          description: Project created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}:
+    get:
+      tags: [Projects]
+      operationId: getProject
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+      responses:
+        '200':
+          description: Project.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } }
+        default: { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [Projects]
+      operationId: updateProject
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/IfMatch' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProjectSettings' } } }
+      responses:
+        '200':
+          description: Project updated.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } }
+        default: { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Projects]
+      operationId: trashProject
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '200':
+          description: Project moved to trash.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/archive:
+    post:
+      tags: [Projects]
+      operationId: archiveProject
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '200':
+          description: Project archived.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/restore:
+    post:
+      tags: [Projects]
+      operationId: restoreProject
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '200':
+          description: Project restored.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/duplicate:
+    post:
+      tags: [Projects]
+      operationId: duplicateProject
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 160 }
+      responses:
+        '201':
+          description: Duplicate created in the same workspace.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/versions:
+    get:
+      tags: [Projects]
+      operationId: listProjectVersions
+      description: Immutable project version history.
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+      responses:
+        '200':
+          description: Project versions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProjectVersion' }
+        default: { $ref: '#/components/responses/Problem' }
+  /project-templates:
+    get:
+      tags: [Projects]
+      operationId: listProjectTemplates
+      parameters:
+        - { name: workspaceId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: System and workspace templates.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProjectTemplate' }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/project-templates:
+    post:
+      tags: [Projects]
+      operationId: createProjectTemplate
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProjectTemplateInput' } } }
+      responses:
+        '201':
+          description: Workspace template saved.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProjectTemplate' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /project-templates/{templateId}:
+    put:
+      tags: [Projects]
+      operationId: updateProjectTemplate
+      parameters:
+        - { $ref: '#/components/parameters/TemplateId' }
+        - { $ref: '#/components/parameters/IfMatch' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProjectTemplateInput' } } }
+      responses:
+        '200':
+          description: Template version updated.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProjectTemplate' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/libraries:
+    get:
+      tags: [Libraries]
+      operationId: listLibraries
+      parameters: [{ $ref: '#/components/parameters/WorkspaceId' }]
+      responses:
+        '200':
+          description: Workspace story/brand libraries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Library' }
+        default: { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Libraries]
+      operationId: createLibrary
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+                type: { type: string, enum: [story, brand] }
+      responses:
+        '201':
+          description: Library created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Library' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /libraries/{libraryId}/entities:
+    get:
+      tags: [Libraries]
+      operationId: listLibraryEntities
+      parameters:
+        - { $ref: '#/components/parameters/LibraryId' }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/EntityType' } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, approved, retired] } }
+      responses:
+        '200':
+          description: Library entities.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/LibraryEntity' }
+        default: { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Libraries]
+      operationId: createLibraryEntity
+      parameters:
+        - { $ref: '#/components/parameters/LibraryId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LibraryEntityInput' } } }
+      responses:
+        '201':
+          description: Draft entity version created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LibraryEntity' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /library-entities/{entityId}:
+    put:
+      tags: [Libraries]
+      operationId: updateLibraryEntity
+      parameters:
+        - { $ref: '#/components/parameters/EntityId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LibraryEntityInput' } } }
+      responses:
+        '200':
+          description: New draft version created.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LibraryEntity' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /library-entities/{entityId}/status:
+    post:
+      tags: [Libraries]
+      operationId: setLibraryEntityStatus
+      parameters:
+        - { $ref: '#/components/parameters/EntityId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [approved, retired] }
+      responses:
+        '200':
+          description: Version status updated.
+          content: { application/json: { schema: { $ref: '#/components/schemas/LibraryEntity' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/library-links:
+    put:
+      tags: [Libraries]
+      operationId: linkProjectLibraryEntity
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entityVersionId]
+              properties:
+                entityVersionId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Project pinned to approved entity version.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProjectLibraryLink' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/media/uploads:
+    post:
+      tags: [Media]
+      operationId: createMediaUpload
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/UploadRequest' } } }
+      responses:
+        '201':
+          description: Upload authorization.
+          content: { application/json: { schema: { $ref: '#/components/schemas/UploadAuthorization' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /media/uploads/{assetId}/content:
+    put:
+      tags: [Media]
+      operationId: uploadMediaContent
+      parameters:
+        - { $ref: '#/components/parameters/AssetId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+          image/jpeg:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+          image/webp:
+            schema: { type: string, format: binary }
+          video/mp4:
+            schema: { type: string, format: binary }
+          video/quicktime:
+            schema: { type: string, format: binary }
+          video/webm:
+            schema: { type: string, format: binary }
+          audio/wav:
+            schema: { type: string, format: binary }
+          audio/mpeg:
+            schema: { type: string, format: binary }
+          audio/mp4:
+            schema: { type: string, format: binary }
+          audio/flac:
+            schema: { type: string, format: binary }
+          audio/ogg:
+            schema: { type: string, format: binary }
+          model/gltf-binary:
+            schema: { type: string, format: binary }
+      responses:
+        '204': { description: Quarantine upload complete }
+        default: { $ref: '#/components/responses/Problem' }
+  /media/uploads/{assetId}/complete:
+    post:
+      tags: [Media]
+      operationId: completeMediaUpload
+      parameters:
+        - { $ref: '#/components/parameters/AssetId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '202':
+          description: Ingestion workflow started or queued.
+          content: { application/json: { schema: { $ref: '#/components/schemas/MediaAsset' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/audit-events:
+    get:
+      tags: [Audit]
+      operationId: listAuditEvents
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: Audit events.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditEvent' }
+        default: { $ref: '#/components/responses/Problem' }
+components:
+  securitySchemes:
+    sessionCookie: { type: apiKey, in: cookie, name: cf_session }
+  parameters:
+    WorkspaceId: { name: workspaceId, in: path, required: true, schema: { type: string, format: uuid } }
+    ProjectId: { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    SessionId: { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+    MemberId: { name: memberId, in: path, required: true, schema: { type: string, format: uuid } }
+    LibraryId: { name: libraryId, in: path, required: true, schema: { type: string, format: uuid } }
+    EntityId: { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+    TemplateId: { name: templateId, in: path, required: true, schema: { type: string, format: uuid } }
+    AssetId: { name: assetId, in: path, required: true, schema: { type: string, format: uuid } }
+    IfMatch: { name: If-Match, in: header, required: true, schema: { type: string } }
+    CsrfToken: { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 128 } }
+  responses:
+    Problem:
+      description: RFC 9457 problem details.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code, detail]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        code: { type: string }
+        detail: { type: string }
+    SessionExchange:
+      type: object
+      required: [idToken]
+      properties:
+        idToken: { type: string }
+        deviceLabel: { type: string, maxLength: 120 }
+    User:
+      type: object
+      required: [id, email, emailVerified, displayName, locale, timezone, version]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        emailVerified: { type: boolean }
+        displayName: { type: string }
+        avatarUrl: { type: [string, 'null'], format: uri }
+        locale: { type: string }
+        timezone: { type: string }
+        personalWorkspaceId: { type: [string, 'null'], format: uuid }
+        deletionScheduledAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64 }
+    ProfileUpdate:
+      type: object
+      required: [displayName, locale, timezone]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 120 }
+        avatarUrl: { type: [string, 'null'], format: uri }
+        locale: { type: string }
+        timezone: { type: string }
+    AccountSession:
+      type: object
+      required: [id, deviceLabel, createdAt, lastSeenAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        deviceLabel: { type: string }
+        location: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        current: { type: boolean }
+    SessionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AccountSession' }
+    AccountDeletionRequest:
+      type: object
+      required: [scheduledAt, purgeAt]
+      properties:
+        scheduledAt: { type: string, format: date-time }
+        purgeAt: { type: string, format: date-time }
+    Workspace:
+      type: object
+      required: [id, name, slug, kind, ownerUserId, version]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        kind: { type: string, enum: [personal, team] }
+        ownerUserId: { type: string, format: uuid }
+        status: { type: string, enum: [active, trashed], default: active }
+        version: { type: integer, format: int64 }
+    Role: { type: string, enum: [owner, admin, editor, reviewer, viewer] }
+    Membership:
+      type: object
+      required: [id, workspaceId, userId, role, status, canSpend]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { type: string, enum: [active, removed] }
+        canSpend: { type: boolean }
+        monthlyLimitMicros: { type: [integer, 'null'], format: int64 }
+        perRunLimitMicros: { type: [integer, 'null'], format: int64 }
+    MemberUpdate:
+      type: object
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+        canSpend: { type: boolean }
+        monthlyLimitMicros: { type: [integer, 'null'], format: int64 }
+        perRunLimitMicros: { type: [integer, 'null'], format: int64 }
+        remove: { type: boolean }
+    InvitationCreate:
+      type: object
+      required: [email, role]
+      properties:
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/Role' }
+    Invitation:
+      type: object
+      required: [id, workspaceId, email, role, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/Role' }
+        expiresAt: { type: string, format: date-time }
+        developmentToken: { type: [string, 'null'] }
+    BudgetPolicy:
+      type: object
+      required: [workspaceId, currency, version]
+      properties:
+        workspaceId: { type: string, format: uuid }
+        currency: { type: string, default: USD }
+        monthlyLimitMicros: { type: [integer, 'null'], format: int64 }
+        perRunApprovalThresholdMicros: { type: [integer, 'null'], format: int64 }
+        version: { type: integer, format: int64 }
+    BudgetPolicyUpdate:
+      type: object
+      properties:
+        currency: { type: string, default: USD }
+        monthlyLimitMicros: { type: [integer, 'null'], format: int64 }
+        perRunApprovalThresholdMicros: { type: [integer, 'null'], format: int64 }
+    ProductionFormat:
+      type: string
+      enum: [short_film, feature, episodic, music_video, advertisement, trailer, other]
+    ProjectSettings:
+      type: object
+      required: [name, projectType, productionFormat]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        projectType: { type: string, enum: [single, series] }
+        productionFormat: { $ref: '#/components/schemas/ProductionFormat' }
+        aspectWidth: { type: integer, minimum: 1, default: 16 }
+        aspectHeight: { type: integer, minimum: 1, default: 9 }
+        frameRateNumerator: { type: integer, minimum: 1, default: 24 }
+        frameRateDenominator: { type: integer, minimum: 1, default: 1 }
+        audioLanguage: { type: string, default: en }
+        rating: { type: string, enum: [family, moderate, mature], default: moderate }
+        styleDirection: { type: string, maxLength: 2000, default: '' }
+        qualityPolicy: { type: string, enum: [draft, balanced, final], default: balanced }
+        costCeilingMicros: { type: [integer, 'null'], format: int64, minimum: 0 }
+    Project:
+      type: object
+      required: [id, workspaceId, slug, status, privacy, currentVersion, settings]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        slug: { type: string }
+        status: { type: string, enum: [active, archived, trashed] }
+        privacy: { const: private }
+        currentVersion: { type: integer, format: int64 }
+        settings: { $ref: '#/components/schemas/ProjectSettings' }
+        deletedAt: { type: [string, 'null'], format: date-time }
+        purgeAt: { type: [string, 'null'], format: date-time }
+    ProjectVersion:
+      type: object
+      required: [id, projectId, version, settings, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        version: { type: integer, format: int64 }
+        settings: { $ref: '#/components/schemas/ProjectSettings' }
+        createdAt: { type: string, format: date-time }
+    ProjectTemplateInput:
+      type: object
+      required: [name, settings]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string }
+        settings: { $ref: '#/components/schemas/ProjectSettings' }
+    ProjectTemplate:
+      type: object
+      required: [id, name, system, currentVersion, settings]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: [string, 'null'], format: uuid }
+        name: { type: string }
+        description: { type: string }
+        system: { type: boolean }
+        currentVersion: { type: integer, format: int64 }
+        settings: { $ref: '#/components/schemas/ProjectSettings' }
+    Library:
+      type: object
+      required: [id, workspaceId, name, type, version]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        name: { type: string }
+        type: { type: string, enum: [story, brand] }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64 }
+    EntityType:
+      type: string
+      enum: [character, location, prop, faction, creature, vehicle, style_guide, voice_profile, other]
+    LibraryEntityInput:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        type: { $ref: '#/components/schemas/EntityType' }
+        aliases: { type: array, items: { type: string } }
+        summary: { type: string }
+        description: { type: string }
+        tags: { type: array, items: { type: string } }
+        attributes: { type: object, additionalProperties: true }
+        changeSummary: { type: string }
+        mediaAssetVersionIds:
+          type: array
+          items: { type: string, format: uuid }
+    LibraryEntityVersion:
+      allOf:
+        - $ref: '#/components/schemas/LibraryEntityInput'
+        - type: object
+          required: [id, entityId, version, status, createdAt]
+          properties:
+            id: { type: string, format: uuid }
+            entityId: { type: string, format: uuid }
+            version: { type: integer, format: int64 }
+            status: { type: string, enum: [draft, approved, retired] }
+            sourceVersionId: { type: [string, 'null'], format: uuid }
+            createdAt: { type: string, format: date-time }
+    LibraryEntity:
+      type: object
+      required: [id, workspaceId, libraryId, currentVersionId, currentVersion]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        libraryId: { type: string, format: uuid }
+        currentVersionId: { type: string, format: uuid }
+        currentVersion: { $ref: '#/components/schemas/LibraryEntityVersion' }
+    ProjectLibraryLink:
+      type: object
+      required: [projectId, entityVersionId]
+      properties:
+        projectId: { type: string, format: uuid }
+        entityVersionId: { type: string, format: uuid }
+        linkedAt: { type: string, format: date-time }
+    ProcessingState:
+      type: string
+      enum: [authorized, uploaded, processing, ready, rejected]
+    MediaKind:
+      type: string
+      enum: [image, video, audio, voice, 3d]
+    UploadRequest:
+      type: object
+      required: [kind, filename, contentType, sizeBytes]
+      properties:
+        kind: { $ref: '#/components/schemas/MediaKind' }
+        filename: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64, minimum: 1 }
+        checksumSha256: { type: [string, 'null'] }
+    MediaAsset:
+      type: object
+      required: [id, workspaceId, kind, filename, contentType, sizeBytes, state]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/MediaKind' }
+        filename: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        checksumSha256: { type: [string, 'null'] }
+        state: { $ref: '#/components/schemas/ProcessingState' }
+        rejectionReason: { type: [string, 'null'] }
+    MediaAssetVersion:
+      type: object
+      required: [id, assetId, version, objectPath, metadata]
+      properties:
+        id: { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
+        version: { type: integer, format: int64 }
+        objectPath: { type: string }
+        previewObjectPath: { type: [string, 'null'] }
+        metadata: { type: object, additionalProperties: true }
+    UploadSession:
+      type: object
+      required: [asset, uploadUrl, expiresInSeconds]
+      properties:
+        asset: { $ref: '#/components/schemas/MediaAsset' }
+        uploadUrl: { type: string }
+        expiresInSeconds: { type: integer }
+    UploadAuthorization:
+      allOf:
+        - $ref: '#/components/schemas/UploadSession'
+    AuditEvent:
+      type: object
+      required: [id, action, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: [string, 'null'], format: uuid }
+        actorUserId: { type: [string, 'null'], format: uuid }
+        targetType: { type: [string, 'null'] }
+        targetId: { type: [string, 'null'], format: uuid }
+        action: { type: string }
+        metadata: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
