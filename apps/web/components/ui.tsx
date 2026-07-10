@@ -12,15 +12,19 @@ import { cn } from "@/lib/cn";
 export function Button({
   className,
   variant = "primary",
+  size = "default",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "quiet" | "danger" }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "quiet" | "ghost" | "danger"; size?: "default" | "icon" }) {
   return (
     <button
       className={cn(
-        "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 rounded-xl text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+        size === "default" && "min-h-10 px-4",
+        size === "icon" && "h-10 w-10 p-0",
         variant === "primary" && "bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]",
         variant === "quiet" &&
           "text-[var(--muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--text)]",
+        variant === "ghost" && "border border-[var(--line)] bg-transparent text-current hover:bg-white/10",
         variant === "danger" && "bg-[var(--danger)] text-white",
         className,
       )}
@@ -71,14 +75,17 @@ export function Field({
   children: ReactNode;
 }) {
   const generatedId = useId();
+  const inputId = isValidElement(children)
+    ? ((children.props as { id?: string }).id ?? generatedId)
+    : generatedId;
   const element = isValidElement(children)
     ? cloneElement(children as ReactElement<{ id?: string }>, {
-        id: (children.props as { id?: string }).id ?? generatedId,
+        id: inputId,
       })
     : children;
   return (
     <div className="grid gap-2 text-sm">
-      <label className="font-medium" htmlFor={generatedId}>
+      <label className="font-medium" htmlFor={inputId}>
         {label}
       </label>
       {element}

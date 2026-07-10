@@ -3,6 +3,7 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   browserLocalPersistence,
+  connectAuthEmulator,
   getAuth,
   inMemoryPersistence,
   setPersistence,
@@ -16,6 +17,7 @@ const config = {
 };
 
 let identity: Auth | undefined;
+let emulatorConnected = false;
 
 export function getIdentity(): Auth {
   if (typeof window === "undefined") throw new Error("Identity is only available in the browser");
@@ -23,6 +25,10 @@ export function getIdentity(): Auth {
   if (!identity) {
     const app = getApps().length ? getApp() : initializeApp(config);
     identity = getAuth(app);
+    if (!emulatorConnected && config.authDomain === "localhost") {
+      connectAuthEmulator(identity, "http://localhost:9099", { disableWarnings: true });
+      emulatorConnected = true;
+    }
   }
   return identity;
 }

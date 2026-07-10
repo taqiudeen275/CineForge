@@ -39,12 +39,15 @@ type Workspace struct {
 	PurgeAt     *time.Time `json:"purgeAt,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
+	CurrentMembership *Membership `json:"currentMembership,omitempty"`
 }
 
 type Membership struct {
 	ID                 string     `json:"id"`
 	WorkspaceID        string     `json:"workspaceId"`
 	UserID             string     `json:"userId"`
+	Email              string     `json:"email,omitempty"`
+	DisplayName        string     `json:"displayName,omitempty"`
 	Role               Role       `json:"role"`
 	Status             string     `json:"status"`
 	CanSpend           bool       `json:"canSpend"`
@@ -54,6 +57,15 @@ type Membership struct {
 	CreatedAt          time.Time  `json:"createdAt"`
 	UpdatedAt          time.Time  `json:"updatedAt"`
 	RemovedAt          *time.Time `json:"removedAt,omitempty"`
+}
+
+type Invitation struct {
+	ID string `json:"id"`
+	WorkspaceID string `json:"workspaceId"`
+	Email string `json:"email"`
+	Role Role `json:"role"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type BudgetPolicy struct {
@@ -94,6 +106,14 @@ type Project struct {
 	PurgeAt        *time.Time      `json:"purgeAt,omitempty"`
 	CreatedAt      time.Time       `json:"createdAt"`
 	UpdatedAt      time.Time       `json:"updatedAt"`
+	SourceTemplateID *string       `json:"sourceTemplateId,omitempty"`
+	SourceTemplateVersion *int64   `json:"sourceTemplateVersion,omitempty"`
+}
+
+type ProjectCreateInput struct {
+	Name string `json:"name"`
+	TemplateID *string `json:"templateId,omitempty"`
+	SettingsOverrides *ProjectSettings `json:"settingsOverrides,omitempty"`
 }
 
 type ProjectVersion struct {

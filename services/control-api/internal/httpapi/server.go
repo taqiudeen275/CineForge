@@ -10,14 +10,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"firebase.google.com/go/v4/auth"
@@ -37,6 +40,8 @@ type Server struct {
 	auth     *auth.Client
 	temporal client.Client
 	log      *slog.Logger
+	linkMu   sync.Mutex
+	linkSent map[string]time.Time
 }
 type contextKey string
 
@@ -48,7 +53,7 @@ type principal struct {
 }
 
 func New(cfg config.Config, st *store.Store, authClient *auth.Client, temporalClient client.Client, logger *slog.Logger) *Server {
-	return &Server{cfg: cfg, store: st, auth: authClient, temporal: temporalClient, log: logger}
+	return &Server{cfg: cfg, store: st, auth: authClient, temporal: temporalClient, log: logger, linkSent: map[string]time.Time{}}
 }
 
 func (s *Server) Router() http.Handler {
@@ -59,6 +64,7 @@ func (s *Server) Router() http.Handler {
 	})
 	r.Route("/v1", func(r chi.Router) {
 		r.Get("/auth/csrf", s.csrf)
+		r.With(s.requireCSRF).Post("/auth/email-link", s.requestEmailLink)
 		r.With(s.requireCSRF).Post("/auth/session", s.exchangeSession)
 		r.Group(func(r chi.Router) {
 			r.Use(s.authenticate)
@@ -68,46 +74,107 @@ func (s *Server) Router() http.Handler {
 			r.With(s.requireCSRF).Delete("/auth/sessions/{sessionID}", s.revokeSession)
 			r.With(s.requireCSRF).Post("/auth/logout", s.logout)
 			r.With(s.requireCSRF).Post("/auth/logout-all", s.logoutAll)
+			r.With(s.requireCSRF).Post("/auth/reauth", s.reauthenticate)
 			r.With(s.requireCSRF, s.requireRecentAuth, s.requireIdempotency).Post("/me/deletion", s.scheduleAccountDeletion)
 			r.With(s.requireCSRF).Post("/me/deletion/cancel", s.cancelAccountDeletion)
-			r.Get("/workspaces", s.listWorkspaces)
-			r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces", s.createWorkspace)
-			r.With(s.requireCSRF).Post("/workspaces/bootstrap", s.bootstrapWorkspace)
-			r.Get("/workspaces/{workspaceID}/members", s.listMembers)
-			r.With(s.requireCSRF).Patch("/workspaces/{workspaceID}/members/{memberID}", s.updateMember)
-			r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/invitations", s.createInvitation)
-			r.With(s.requireCSRF).Post("/invitations/accept", s.acceptInvitation)
-			r.With(s.requireCSRF, s.requireRecentAuth).Post("/workspaces/{workspaceID}/ownership", s.transferOwnership)
-			r.With(s.requireCSRF, s.requireRecentAuth, s.requireIdempotency).Delete("/workspaces/{workspaceID}", s.trashWorkspace)
-			r.With(s.requireCSRF).Post("/workspaces/{workspaceID}/restore", s.restoreWorkspace)
-			r.Get("/workspaces/{workspaceID}/budget-policy", s.getBudget)
-			r.With(s.requireCSRF).Put("/workspaces/{workspaceID}/budget-policy", s.updateBudget)
-			r.Get("/workspaces/{workspaceID}/projects", s.listProjects)
-			r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/projects", s.createProject)
-			r.Get("/projects/{projectID}", s.getProject)
-			r.Get("/projects/{projectID}/versions", s.listProjectVersions)
-			r.With(s.requireCSRF).Put("/projects/{projectID}", s.updateProject)
-			r.With(s.requireCSRF).Post("/projects/{projectID}/archive", s.archiveProject)
-			r.With(s.requireCSRF).Post("/projects/{projectID}/restore", s.restoreProject)
-			r.With(s.requireCSRF, s.requireIdempotency).Delete("/projects/{projectID}", s.trashProject)
-			r.With(s.requireCSRF, s.requireIdempotency).Post("/projects/{projectID}/duplicate", s.duplicateProject)
-			r.Get("/project-templates", s.listProjectTemplates)
-			r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/project-templates", s.createProjectTemplate)
-			r.With(s.requireCSRF).Put("/project-templates/{templateID}", s.updateProjectTemplate)
-			r.Get("/workspaces/{workspaceID}/libraries", s.listLibraries)
-			r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/libraries", s.createLibrary)
-			r.Get("/libraries/{libraryID}/entities", s.listEntities)
-			r.With(s.requireCSRF, s.requireIdempotency).Post("/libraries/{libraryID}/entities", s.createEntity)
-			r.With(s.requireCSRF).Put("/library-entities/{entityID}", s.updateEntity)
-			r.With(s.requireCSRF).Post("/library-entities/{entityID}/status", s.setEntityStatus)
-			r.With(s.requireCSRF).Put("/projects/{projectID}/library-links", s.linkEntity)
-			r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/media/uploads", s.createMediaUpload)
-			r.With(s.requireCSRF).Put("/media/uploads/{assetID}/content", s.uploadMediaContent)
-			r.With(s.requireCSRF).Post("/media/uploads/{assetID}/complete", s.completeMediaUpload)
-			r.Get("/workspaces/{workspaceID}/audit-events", s.listAuditEvents)
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireVerifiedEmail)
+				r.Get("/workspaces", s.listWorkspaces)
+				r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces", s.createWorkspace)
+				r.With(s.requireCSRF).Post("/workspaces/bootstrap", s.bootstrapWorkspace)
+				r.With(s.requireCSRF).Patch("/workspaces/{workspaceID}", s.updateWorkspace)
+				r.Get("/workspaces/{workspaceID}/members", s.listMembers)
+				r.With(s.requireCSRF).Patch("/workspaces/{workspaceID}/members/{memberID}", s.updateMember)
+				r.Get("/workspaces/{workspaceID}/invitations", s.listInvitations)
+				r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/invitations", s.createInvitation)
+				r.With(s.requireCSRF).Delete("/workspaces/{workspaceID}/invitations/{invitationID}", s.revokeInvitation)
+				r.With(s.requireCSRF).Post("/invitations/accept", s.acceptInvitation)
+				r.With(s.requireCSRF, s.requireRecentAuth).Post("/workspaces/{workspaceID}/ownership", s.transferOwnership)
+				r.With(s.requireCSRF, s.requireRecentAuth, s.requireIdempotency).Delete("/workspaces/{workspaceID}", s.trashWorkspace)
+				r.With(s.requireCSRF).Post("/workspaces/{workspaceID}/restore", s.restoreWorkspace)
+				r.Get("/workspaces/{workspaceID}/budget-policy", s.getBudget)
+				r.With(s.requireCSRF).Put("/workspaces/{workspaceID}/budget-policy", s.updateBudget)
+				r.Get("/workspaces/{workspaceID}/projects", s.listProjects)
+				r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/projects", s.createProject)
+				r.Get("/projects/{projectID}", s.getProject)
+				r.Get("/projects/{projectID}/versions", s.listProjectVersions)
+				r.With(s.requireCSRF).Put("/projects/{projectID}", s.updateProject)
+				r.With(s.requireCSRF).Post("/projects/{projectID}/archive", s.archiveProject)
+				r.With(s.requireCSRF).Post("/projects/{projectID}/restore", s.restoreProject)
+				r.With(s.requireCSRF, s.requireIdempotency).Delete("/projects/{projectID}", s.trashProject)
+				r.With(s.requireCSRF, s.requireIdempotency).Post("/projects/{projectID}/duplicate", s.duplicateProject)
+				r.Get("/project-templates", s.listProjectTemplates)
+				r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/project-templates", s.createProjectTemplate)
+				r.With(s.requireCSRF).Put("/project-templates/{templateID}", s.updateProjectTemplate)
+				r.Get("/workspaces/{workspaceID}/libraries", s.listLibraries)
+				r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/libraries", s.createLibrary)
+				r.Get("/libraries/{libraryID}/entities", s.listEntities)
+				r.With(s.requireCSRF, s.requireIdempotency).Post("/libraries/{libraryID}/entities", s.createEntity)
+				r.With(s.requireCSRF).Put("/library-entities/{entityID}", s.updateEntity)
+				r.With(s.requireCSRF).Post("/library-entities/{entityID}/status", s.setEntityStatus)
+				r.With(s.requireCSRF).Put("/projects/{projectID}/library-links", s.linkEntity)
+				r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/media/uploads", s.createMediaUpload)
+				r.With(s.requireCSRF).Put("/media/uploads/{assetID}/content", s.uploadMediaContent)
+				r.With(s.requireCSRF).Post("/media/uploads/{assetID}/complete", s.completeMediaUpload)
+				r.Get("/workspaces/{workspaceID}/audit-events", s.listAuditEvents)
+			})
 		})
 	})
 	return r
+}
+
+func (s *Server) requestEmailLink(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+		Next  string `json:"next"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if _, err := mail.ParseAddress(email); err != nil {
+		problem(w, http.StatusBadRequest, "invalid_email", "Enter a valid email address")
+		return
+	}
+	next := safeNext(req.Next)
+	key := ipPrefix(r.RemoteAddr) + "|" + email
+	s.linkMu.Lock()
+	last := s.linkSent[key]
+	if time.Since(last) >= time.Minute {
+		s.linkSent[key] = time.Now()
+	}
+	s.linkMu.Unlock()
+	if !last.IsZero() && time.Since(last) < time.Minute {
+		writeJSON(w, http.StatusAccepted, map[string]any{"sent": true, "retryAfterSeconds": 60})
+		return
+	}
+	continueURL := s.cfg.WebOrigin + "/auth/email-link?next=" + url.QueryEscape(next)
+	link, err := s.auth.EmailSignInLink(r.Context(), email, &auth.ActionCodeSettings{URL: continueURL, HandleCodeInApp: true})
+	if err == nil {
+		err = s.sendEmailSignIn(email, link)
+	}
+	if err != nil {
+		s.log.Warn("email sign-in delivery failed", "error", err)
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"sent": true, "retryAfterSeconds": 60})
+}
+
+func safeNext(value string) string {
+	if value == "/app" || strings.HasPrefix(value, "/app/") {
+		return value
+	}
+	return "/app"
+}
+
+func (s *Server) sendEmailSignIn(email, link string) error {
+	from := s.cfg.MailFrom
+	if strings.Contains(from, "<") {
+		if start, end := strings.LastIndex(from, "<"), strings.LastIndex(from, ">"); start >= 0 && end > start {
+			from = from[start+1 : end]
+		}
+	}
+	message := []byte("From: " + s.cfg.MailFrom + "\r\nTo: " + email + "\r\nSubject: Your CineForge sign-in link\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<div style=\"background:#09090d;color:#f6f3ef;padding:40px;font-family:Arial,sans-serif\"><h1 style=\"letter-spacing:.12em;font-size:18px\">CINEFORGE</h1><h2 style=\"font-size:28px\">Enter your studio</h2><p style=\"color:#aaa6b0;line-height:1.6\">Use this secure, single-use link to sign in. It expires automatically.</p><p><a style=\"display:inline-block;background:#7956ff;color:white;text-decoration:none;padding:14px 20px;border-radius:10px\" href=\"" + html.EscapeString(link) + "\">Continue to CineForge</a></p><p style=\"color:#77727e;font-size:12px\">If you did not request this link, you can ignore this email.</p></div>")
+	return smtp.SendMail(s.cfg.MailSMTPAddr, nil, from, []string{email}, message)
 }
 
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
@@ -294,6 +361,15 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 }
 
 func currentUser(r *http.Request) domain.User { return r.Context().Value(userKey).(principal).User }
+func (s *Server) requireVerifiedEmail(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !currentUser(r).EmailVerified {
+			problem(w, http.StatusForbidden, "email_verification_required", "Verify your email before continuing")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 func (s *Server) requireRecentAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, ok := r.Context().Value(userKey).(principal)
@@ -303,6 +379,28 @@ func (s *Server) requireRecentAuth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) reauthenticate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDToken string `json:"idToken"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	token, err := s.auth.VerifyIDToken(r.Context(), req.IDToken)
+	if err != nil || token.UID != currentUser(r).IdentityProviderUID || time.Since(time.Unix(claimInt64(token.Claims, "auth_time"), 0)) > 5*time.Minute {
+		problem(w, http.StatusUnauthorized, "recent_auth_required", "Complete sign-in again to continue")
+		return
+	}
+	expires := time.Duration(s.cfg.SessionDurationHours) * time.Hour
+	cookie, err := s.auth.SessionCookie(r.Context(), req.IDToken, expires)
+	if err != nil {
+		internal(s, w, r, err)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "cf_session", Value: cookie, Path: "/", HttpOnly: true, Secure: s.cfg.SessionCookieSecure, SameSite: http.SameSiteLaxMode, MaxAge: int(expires.Seconds())})
+	writeJSON(w, http.StatusOK, map[string]bool{"reauthenticated": true})
 }
 
 func (s *Server) sendInvitation(email, token string) error {

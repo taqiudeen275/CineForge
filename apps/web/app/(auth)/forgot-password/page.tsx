@@ -1,4 +1,2 @@
-import { ResetPasswordForm } from "@/components/reset-password-form";
-export default function ForgotPasswordPage() {
-  return <ResetPasswordForm />;
-}
+import { redirect } from "next/navigation";
+export default function ForgotPasswordPage(){redirect("/sign-in")}

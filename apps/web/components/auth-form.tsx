@@ -1,161 +1,23 @@
 "use client";
-
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  sendEmailVerification,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  updateProfile,
-} from "firebase/auth";
+import { useRouter, useSearchParams } from "next/navigation";
+import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { apiFetch } from "@cineforge/api-client";
+import { ArrowRight, Mail } from "lucide-react";
 import { configureEphemeralIdentityPersistence, getIdentity } from "@/lib/firebase";
 import { Button, Field, Input } from "@/components/ui";
 
-export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function exchange(user: import("firebase/auth").User) {
-    const token = await user.getIdToken();
-    await ensureCsrf();
-    const result = await apiFetch<{ requiresVerification: boolean }>("/v1/auth/session", {
-      method: "POST",
-      body: { idToken: token, deviceLabel: browserLabel() },
-    });
-    await signOut(getIdentity());
-    router.push(result.requiresVerification ? "/verify-email" : "/app");
-    router.refresh();
-  }
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await configureEphemeralIdentityPersistence();
-      const auth = getIdentity();
-      const credential =
-        mode === "sign-up"
-          ? await createUserWithEmailAndPassword(auth, email, password)
-          : await signInWithEmailAndPassword(auth, email, password);
-      if (mode === "sign-up") {
-        if (name.trim()) await updateProfile(credential.user, { displayName: name.trim() });
-        await sendEmailVerification(credential.user);
-      }
-      await exchange(credential.user);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Authentication failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function google() {
-    setBusy(true);
-    setError("");
-    try {
-      await configureEphemeralIdentityPersistence();
-      const credential = await signInWithPopup(getIdentity(), new GoogleAuthProvider());
-      await exchange(credential.user);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Google sign-in failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <section className="w-full max-w-sm">
-      <h1 className="m-0 text-3xl font-semibold tracking-[-.04em]">
-        {mode === "sign-in" ? "Welcome back" : "Create your account"}
-      </h1>
-      <p className="mb-8 mt-2 text-sm text-[var(--muted)]">
-        {mode === "sign-in"
-          ? "Continue building your story world."
-          : "Start in a private personal workspace."}
-      </p>
-      <form className="grid gap-5" onSubmit={submit}>
-        {mode === "sign-up" ? (
-          <Field label="Display name">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="name"
-              required
-            />
-          </Field>
-        ) : null}
-        <Field label="Email">
-          <Input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            autoComplete="email"
-            required
-          />
-        </Field>
-        <Field label="Password">
-          <Input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            minLength={10}
-            autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-            required
-          />
-        </Field>
-        {error ? (
-          <p role="alert" className="m-0 text-sm text-[var(--danger)]">
-            {error}
-          </p>
-        ) : null}
-        <Button disabled={busy} type="submit">
-          {busy ? "Working…" : mode === "sign-in" ? "Sign in" : "Create account"}
-        </Button>
-      </form>
-      <div className="my-6 flex items-center gap-3 text-xs text-[var(--muted)]">
-        <span className="h-px flex-1 bg-[var(--line)]" />
-        OR
-        <span className="h-px flex-1 bg-[var(--line)]" />
-      </div>
-      <Button className="w-full" variant="quiet" onClick={google} disabled={busy}>
-        Continue with Google
-      </Button>
-      <p className="mt-8 text-sm text-[var(--muted)]">
-        {mode === "sign-in" ? (
-          <>
-            New to CineForge?{" "}
-            <Link className="text-[var(--text)] underline underline-offset-4" href="/sign-up">
-              Create an account
-            </Link>
-          </>
-        ) : (
-          <>
-            Already have an account?{" "}
-            <Link className="text-[var(--text)] underline underline-offset-4" href="/sign-in">
-              Sign in
-            </Link>
-          </>
-        )}
-      </p>
-      {mode === "sign-in" ? (
-        <Link className="mt-3 block text-sm text-[var(--muted)]" href="/forgot-password">
-          Forgot password?
-        </Link>
-      ) : null}
-    </section>
-  );
+export function AuthForm() {
+  const router = useRouter(); const params = useSearchParams();
+  const [email,setEmail]=useState(""); const [sent,setSent]=useState(false); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
+  const next = safeNext(params.get("next"));
+  async function exchange(user: import("firebase/auth").User) { const token=await user.getIdToken(); await ensureCsrf(); const result=await apiFetch<{requiresVerification:boolean}>("/v1/auth/session",{method:"POST",body:{idToken:token,deviceLabel:browserLabel()}}); await signOut(getIdentity()); router.replace(result.requiresVerification?"/verify-email":next); router.refresh(); }
+  async function requestLink(e:React.FormEvent){ e.preventDefault(); setBusy(true); setError(""); try{ await ensureCsrf(); await apiFetch("/v1/auth/email-link",{method:"POST",body:{email,next}}); localStorage.setItem("cf-email-for-sign-in",email.trim().toLowerCase()); localStorage.setItem("cf-auth-next",next); setSent(true); }catch(e){setError(e instanceof Error?e.message:"Could not send the sign-in link")}finally{setBusy(false)} }
+  async function google(){setBusy(true);setError("");try{await configureEphemeralIdentityPersistence();const credential=await signInWithPopup(getIdentity(),new GoogleAuthProvider());await exchange(credential.user)}catch(e){setError(e instanceof Error?e.message:"Google sign-in failed")}finally{setBusy(false)}}
+  return <section className="auth-card"><div className="auth-kicker">YOUR PRIVATE STUDIO</div><h1>{sent?"Check your inbox":"Welcome to CineForge"}</h1><p>{sent?<>We sent a secure sign-in link to <strong>{email}</strong>. It expires automatically.</>:"Sign in or create an account. No password required."}</p>{sent?<div className="auth-sent"><Mail/><div><strong>Open the link on this device</strong><span>You can also continue elsewhere by confirming your email.</span></div><Button variant="quiet" onClick={()=>setSent(false)}>Use another email</Button></div>:<><form onSubmit={requestLink} className="auth-form"><Field label="Email address"><Input value={email} onChange={e=>setEmail(e.target.value)} type="email" autoComplete="email" placeholder="you@example.com" required /></Field>{error?<p role="alert" className="auth-error">{error}</p>:null}<Button disabled={busy} type="submit" className="w-full">{busy?"Sending…":<>Continue with email <ArrowRight size={16}/></>}</Button></form><div className="auth-divider"><span/>OR<span/></div><Button className="w-full" variant="quiet" onClick={google} disabled={busy}><GoogleMark/>Continue with Google</Button></>}<p className="auth-terms">By continuing, you agree to use CineForge responsibly. Your projects are private by default.</p><Link href="/" className="auth-back">← Back to CineForge</Link></section>;
 }
-
-async function ensureCsrf() {
-  const response = await fetch("/api/v1/auth/csrf", { credentials: "include" });
-  if (!response.ok) throw new Error("Could not establish a secure session");
-}
-function browserLabel() {
-  return `${navigator.platform || "Web"} · ${navigator.userAgent.includes("Firefox") ? "Firefox" : navigator.userAgent.includes("Edg") ? "Edge" : navigator.userAgent.includes("Chrome") ? "Chrome" : "Browser"}`;
-}
+export async function ensureCsrf(){const response=await fetch("/api/v1/auth/csrf",{credentials:"include"});if(!response.ok)throw new Error("Could not establish a secure session")}
+export function safeNext(value:string|null){return value==="/app"||value?.startsWith("/app/")?value:"/app"}
+function browserLabel(){return `${navigator.platform||"Web"} · ${navigator.userAgent.includes("Firefox")?"Firefox":navigator.userAgent.includes("Edg")?"Edge":navigator.userAgent.includes("Chrome")?"Chrome":"Browser"}`}
+function GoogleMark(){return <span className="google-mark" aria-hidden="true">G</span>}
