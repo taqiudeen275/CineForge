@@ -42,10 +42,12 @@ func main() {
 	}
 	temporalClient, err := client.Dial(client.Options{HostPort: os.Getenv("TEMPORAL_ADDRESS")})
 	if err != nil {
-		log.Error("temporal failed", "error", err)
-		os.Exit(1)
+		log.Warn("temporal unavailable; media workflow endpoints will return service unavailable", "error", err)
+		temporalClient = nil
 	}
-	defer temporalClient.Close()
+	if temporalClient != nil {
+		defer temporalClient.Close()
+	}
 	h := httpapi.New(cfg, st, authClient, temporalClient, log).Router()
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: h, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second}
 	go func() {

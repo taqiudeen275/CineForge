@@ -1,1 +1,9 @@
-import { Suspense } from "react";import{InvitationAccept}from"@/components/invitation-accept";export default function InvitePage(){return <Suspense fallback={<div className="shell-loading">Opening invitation…</div>}><InvitationAccept/></Suspense>}
+import { Suspense } from "react";
+import { InvitationAccept } from "@/components/invitation-accept";
+export default function InvitePage() {
+  return (
+    <Suspense fallback={<div className="shell-loading">Opening invitation…</div>}>
+      <InvitationAccept />
+    </Suspense>
+  );
+}

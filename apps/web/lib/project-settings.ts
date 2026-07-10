@@ -35,7 +35,9 @@ export function serializeProjectSettings(
     rating: values.rating as ProjectSettings["rating"],
     styleDirection: values.style,
     qualityPolicy: values.quality as ProjectSettings["qualityPolicy"],
-    costCeilingMicros: values.costCeiling ? Math.round(Number(values.costCeiling) * 1_000_000) : null,
+    costCeilingMicros: values.costCeiling
+      ? Math.round(Number(values.costCeiling) * 1_000_000)
+      : null,
   };
 }
 

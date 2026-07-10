@@ -384,16 +384,33 @@ func (s *Server) requireRecentAuth(next http.Handler) http.Handler {
 }
 
 func (s *Server) requireMFA(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-		p:=r.Context().Value(userKey).(principal);record,err:=s.auth.GetUser(r.Context(),p.User.IdentityProviderUID)
-		if err!=nil{internal(s,w,r,err);return}
-		if record.MultiFactor==nil||len(record.MultiFactor.EnrolledFactors)==0{problem(w,http.StatusForbidden,"mfa_enrollment_required","Set up an authenticator before this high-risk action");return}
-		if !p.MFA{problem(w,http.StatusUnauthorized,"mfa_challenge_required","Complete multi-factor authentication to continue");return}
-		next.ServeHTTP(w,r)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.Context().Value(userKey).(principal)
+		record, err := s.auth.GetUser(r.Context(), p.User.IdentityProviderUID)
+		if err != nil {
+			internal(s, w, r, err)
+			return
+		}
+		if record.MultiFactor == nil || len(record.MultiFactor.EnrolledFactors) == 0 {
+			problem(w, http.StatusForbidden, "mfa_enrollment_required", "Set up an authenticator before this high-risk action")
+			return
+		}
+		if !p.MFA {
+			problem(w, http.StatusUnauthorized, "mfa_challenge_required", "Complete multi-factor authentication to continue")
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
-func tokenHasMFA(claims map[string]any) bool { if fb,ok:=claims["firebase"].(map[string]any);ok { if v,ok:=fb["sign_in_second_factor"].(string);ok&&v!=""{return true} }; return false }
+func tokenHasMFA(claims map[string]any) bool {
+	if fb, ok := claims["firebase"].(map[string]any); ok {
+		if v, ok := fb["sign_in_second_factor"].(string); ok && v != "" {
+			return true
+		}
+	}
+	return false
+}
 
 func (s *Server) reauthenticate(w http.ResponseWriter, r *http.Request) {
 	var req struct {

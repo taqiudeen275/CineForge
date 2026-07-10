@@ -1,4 +1,9 @@
+import { Suspense } from "react";
 import { AuthForm } from "@/components/auth-form";
 export default function SignInPage() {
-  return <AuthForm />;
+  return (
+    <Suspense fallback={<section className="auth-card">Opening secure sign-in…</section>}>
+      <AuthForm />
+    </Suspense>
+  );
 }

@@ -69,13 +69,13 @@ type Invitation struct {
 }
 
 type BudgetPolicy struct {
-	WorkspaceID             string    `json:"workspaceId"`
-	Currency                string    `json:"currency"`
-	MonthlyLimitMicros      *int64    `json:"monthlyLimitMicros,omitempty"`
-	PerRunApprovalThresholdMicros *int64 `json:"perRunApprovalThresholdMicros,omitempty"`
-	EditorCanPublishLibrary bool      `json:"editorCanPublishLibrary"`
-	Version                 int64     `json:"version"`
-	UpdatedAt               time.Time `json:"updatedAt"`
+	WorkspaceID                   string    `json:"workspaceId"`
+	Currency                      string    `json:"currency"`
+	MonthlyLimitMicros            *int64    `json:"monthlyLimitMicros,omitempty"`
+	PerRunApprovalThresholdMicros *int64    `json:"perRunApprovalThresholdMicros,omitempty"`
+	EditorCanPublishLibrary       bool      `json:"editorCanPublishLibrary"`
+	Version                       int64     `json:"version"`
+	UpdatedAt                     time.Time `json:"updatedAt"`
 }
 
 type ProjectSettings struct {

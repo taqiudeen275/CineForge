@@ -14,7 +14,10 @@ export function Button({
   variant = "primary",
   size = "default",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "quiet" | "ghost" | "danger"; size?: "default" | "icon" }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "primary" | "quiet" | "ghost" | "danger";
+  size?: "default" | "icon";
+}) {
   return (
     <button
       className={cn(
@@ -24,7 +27,8 @@ export function Button({
         variant === "primary" && "bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]",
         variant === "quiet" &&
           "text-[var(--muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--text)]",
-        variant === "ghost" && "border border-[var(--line)] bg-transparent text-current hover:bg-white/10",
+        variant === "ghost" &&
+          "border border-[var(--line)] bg-transparent text-current hover:bg-white/10",
         variant === "danger" && "bg-[var(--danger)] text-white",
         className,
       )}

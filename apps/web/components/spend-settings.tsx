@@ -68,7 +68,9 @@ export function SpendSettings() {
                 min="0"
                 step="0.01"
                 defaultValue={
-                  p.perRunApprovalThresholdMicros ? String(p.perRunApprovalThresholdMicros / 1_000_000) : ""
+                  p.perRunApprovalThresholdMicros
+                    ? String(p.perRunApprovalThresholdMicros / 1_000_000)
+                    : ""
                 }
                 disabled={!owner}
               />
