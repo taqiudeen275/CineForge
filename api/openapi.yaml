@@ -145,6 +145,23 @@ paths:
           description: Current user.
           content: { application/json: { schema: { $ref: '#/components/schemas/User' } } }
         default: { $ref: '#/components/responses/Problem' }
+  /me/mfa:
+    get:
+      tags: [Account]
+      operationId: getMfaStatus
+      responses:
+        '200':
+          description: MFA enrollment and challenge state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enrolled, factorCount, recentChallenge]
+                properties:
+                  enrolled: { type: boolean }
+                  factorCount: { type: integer }
+                  recentChallenge: { type: boolean }
+        default: { $ref: '#/components/responses/Problem' }
     patch:
       tags: [Account]
       operationId: updateCurrentUser
@@ -1028,11 +1045,11 @@ components:
         createdAt: { type: string, format: date-time }
     ProjectTemplateInput:
       type: object
-      required: [name, settings]
+      required: [name, projectId]
       properties:
         name: { type: string, minLength: 1, maxLength: 160 }
         description: { type: string }
-        settings: { $ref: '#/components/schemas/ProjectSettings' }
+        projectId: { type: string, format: uuid }
     ProjectTemplate:
       type: object
       required: [id, name, system, currentVersion, settings]

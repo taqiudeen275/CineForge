@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useShell } from "@/components/app-shell";
 import { Button, Field, Input, PageHeader } from "@/components/ui";
+import { MfaSettings } from "@/components/mfa-settings";
 export function AccountSettings() {
   const { user } = useShell();
   const router = useRouter();
@@ -66,6 +67,7 @@ export function AccountSettings() {
           Review active sessions
         </a>
       </section>
+      <MfaSettings />
       <section className="mt-14 border-t border-[var(--line)] pt-7">
         <h2 className="text-base font-semibold text-[var(--danger)]">Delete account</h2>
         <p className="max-w-xl text-sm leading-6 text-[var(--muted)]">
