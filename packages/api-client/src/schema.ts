@@ -145,6 +145,22 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMfaStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch: operations["updateCurrentUser"];
         trace?: never;
     };
@@ -880,7 +896,8 @@ export interface components {
         ProjectTemplateInput: {
             name: string;
             description?: string;
-            settings: components["schemas"]["ProjectSettings"];
+            /** Format: uuid */
+            projectId: string;
         };
         ProjectTemplate: {
             /** Format: uuid */
@@ -1265,6 +1282,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["User"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getMfaStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description MFA enrollment and challenge state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enrolled: boolean;
+                        factorCount: number;
+                        recentChallenge: boolean;
+                    };
                 };
             };
             default: components["responses"]["Problem"];
