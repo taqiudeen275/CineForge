@@ -191,6 +191,8 @@ func (s *Server) updateMember(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	if !req.Remove && !validRole(req.Role) { problem(w,http.StatusBadRequest,"invalid_role","Choose a valid workspace role");return }
+	if req.MonthlyLimitMicros != nil && *req.MonthlyLimitMicros < 0 || req.PerRunLimitMicros != nil && *req.PerRunLimitMicros < 0 { problem(w,http.StatusBadRequest,"invalid_spend_limit","Spend limits cannot be negative");return }
 	out, err := s.store.UpdateMember(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), chi.URLParam(r, "memberID"), req.Role, req.CanSpend, req.MonthlyLimitMicros, req.PerRunLimitMicros, req.LibraryPublish, req.Remove)
 	if err != nil {
 		handleError(s, w, r, err)
@@ -224,6 +226,7 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	if !validRole(req.Role)||req.Role==domain.RoleOwner||!strings.Contains(req.Email,"@") { problem(w,http.StatusBadRequest,"invalid_invitation","Enter a valid email and invitation role");return }
 	token, _ := randomToken(32)
 	id, err := s.store.CreateInvitation(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), req.Email, req.Role, token, time.Now().Add(7*24*time.Hour))
 	if err != nil {
@@ -482,6 +485,7 @@ func (s *Server) createProjectTemplate(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	if strings.TrimSpace(req.Name)==""||req.ProjectID=="" { problem(w,http.StatusBadRequest,"invalid_template","Template name and project are required");return }
 	out, err := s.store.SaveProjectTemplate(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), req.ProjectID, "", req.Name, req.Description, 0)
 	if err != nil {
 		handleError(s, w, r, err)
@@ -490,6 +494,8 @@ func (s *Server) createProjectTemplate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", strconv.FormatInt(out.CurrentVersion, 10))
 	writeJSON(w, http.StatusCreated, out)
 }
+
+func validRole(role domain.Role)bool{return role==domain.RoleOwner||role==domain.RoleAdmin||role==domain.RoleEditor||role==domain.RoleReviewer||role==domain.RoleViewer}
 
 func (s *Server) updateProjectTemplate(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
