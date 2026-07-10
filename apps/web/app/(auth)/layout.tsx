@@ -1,5 +1,6 @@
 import { Brand } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <main className="auth-layout">

@@ -1,9 +1,29 @@
 import { Suspense } from "react";
+import { Brand } from "@/components/brand";
 import { EmailLinkCompletion } from "@/components/email-link-completion";
+import { ThemeToggle } from "@/components/theme-toggle";
+
 export default function EmailLinkPage() {
   return (
-    <Suspense fallback={<div className="auth-card">Completing secure sign-in…</div>}>
-      <EmailLinkCompletion />
-    </Suspense>
+    <main className="auth-layout">
+      <div className="auth-ambient" />
+      <header>
+        <Brand />
+        <ThemeToggle />
+      </header>
+      <div className="auth-stage">
+        <aside>
+          <span>ONE PRODUCTION TRUTH</span>
+          <blockquote>
+            “Develop the world, direct the shots, and finish the story—with every decision
+            traceable.”
+          </blockquote>
+          <p>Private by default · No password required</p>
+        </aside>
+        <Suspense fallback={<div className="auth-card">Completing secure sign-in…</div>}>
+          <EmailLinkCompletion />
+        </Suspense>
+      </div>
+    </main>
   );
 }

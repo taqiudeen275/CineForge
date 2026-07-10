@@ -59,12 +59,12 @@ Local development defaults to the Firebase Auth emulator:
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=localhost`
 - `NEXT_PUBLIC_FIREBASE_PROJECT_ID=cineforge-local`
 
-For the complete local and production setup flow, see [Identity Platform setup](docs/identity-platform-setup.md).
+For the complete local and production setup flow, see [Identity Platform setup](docs/guides/identity-platform-setup.md).
 
 For production:
 
 1. Create or select a Google Cloud project, enable billing, and enable Identity Platform.
-2. In Identity Platform, enable Email/Password and Google providers.
+2. In Identity Platform, enable Email/Password with email-link sign-in and enable Google independently. CineForge does not collect passwords.
 3. For Google sign-in, create or reuse the Google OAuth web client ID/secret, configure the OAuth consent screen, add the production app domain, and copy the web SDK setup values into the `NEXT_PUBLIC_FIREBASE_*` environment variables.
 4. The browser API key and auth-domain values are public client configuration, not server secrets. Authorization still happens in the Go API.
 5. The Go API should use Application Default Credentials. On Cloud Run/GKE this means an attached least-privilege service account/workload identity. For local production-like testing, prefer `gcloud auth application-default login` or service-account impersonation.
@@ -73,7 +73,8 @@ For production:
 Useful official docs, checked 2026-07-07:
 
 - [Identity Platform Google provider](https://docs.cloud.google.com/identity-platform/docs/web/google)
-- [Identity Platform email/password sign-in](https://docs.cloud.google.com/identity-platform/docs/sign-in-user-email)
+- [Firebase email-link authentication](https://firebase.google.com/docs/auth/web/email-link-auth)
+- [Firebase TOTP MFA](https://firebase.google.com/docs/auth/web/totp-mfa)
 - [Firebase Auth session cookies](https://firebase.google.com/docs/auth/admin/manage-cookies)
 - [Application Default Credentials](https://docs.cloud.google.com/docs/authentication/provide-credentials-adc)
 - [Local ADC setup](https://docs.cloud.google.com/docs/authentication/set-up-adc-local-dev-environment)

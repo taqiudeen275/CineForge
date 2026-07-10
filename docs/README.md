@@ -12,7 +12,7 @@ This directory is the decision baseline for CineForge. The documents describe a 
 | [System Design](system-design.md) | Stack, components, deployment, storage, collaboration, NLE and scaling | Target architecture |
 | [Security and Trust](security-and-trust.md) | Threat model, privacy, provider governance, safety and verification | Launch baseline |
 | [Delivery, Reliability and Cost](delivery-reliability-and-cost.md) | Stages, staffing, SLOs, capacity, FinOps, tests and risk register | Execution baseline |
-| [Identity Platform Setup](identity-platform-setup.md) | Local emulator and production Identity Platform/Firebase Auth setup | Implementation guide |
+| [Identity Platform Setup](guides/identity-platform-setup.md) | Passwordless email, Google, TOTP, emulator, and production setup | Implementation guide |
 
 ## Core product sentence
 
