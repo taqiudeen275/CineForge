@@ -1,16 +1,24 @@
+"use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 export function SettingsNav({ slug }: { slug: string }) {
+  const path = usePathname();
+  const links = [
+    ["general", "General"],
+    ["members", "People & access"],
+    ["spend", "Spend policy"],
+  ];
   return (
-    <nav className="mb-8 flex gap-5 overflow-x-auto border-b border-[var(--line)] text-sm">
-      <Link className="pb-3" href={`/app/${slug}/settings/general`}>
-        General
-      </Link>
-      <Link className="pb-3" href={`/app/${slug}/settings/members`}>
-        Members
-      </Link>
-      <Link className="pb-3" href={`/app/${slug}/settings/spend`}>
-        Spend policy
-      </Link>
+    <nav className="settings-nav" aria-label="Workspace settings">
+      {links.map(([route, label]) => (
+        <Link
+          key={route}
+          className={path.endsWith(`/${route}`) ? "active" : ""}
+          href={`/app/${slug}/settings/${route}`}
+        >
+          {label}
+        </Link>
+      ))}
     </nav>
   );
 }

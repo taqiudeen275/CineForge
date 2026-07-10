@@ -31,7 +31,7 @@ func AuthorizeSpend(policy BudgetPolicy, member Membership, request SpendRequest
 		return SpendDecision{Reason: "workspace_monthly_limit"}
 	}
 	decision := SpendDecision{Allowed: true}
-	if policy.PerRunApprovalMicros != nil && request.AmountMicros > *policy.PerRunApprovalMicros {
+	if policy.PerRunApprovalThresholdMicros != nil && request.AmountMicros > *policy.PerRunApprovalThresholdMicros {
 		decision.ApprovalRequired = true
 		decision.Reason = "workspace_approval_threshold"
 	}

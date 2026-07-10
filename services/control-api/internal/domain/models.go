@@ -29,16 +29,16 @@ type User struct {
 }
 
 type Workspace struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Slug        string     `json:"slug"`
-	Kind        string     `json:"kind"`
-	OwnerUserID string     `json:"ownerUserId"`
-	Version     int64      `json:"version"`
-	DeletedAt   *time.Time `json:"deletedAt,omitempty"`
-	PurgeAt     *time.Time `json:"purgeAt,omitempty"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	ID                string      `json:"id"`
+	Name              string      `json:"name"`
+	Slug              string      `json:"slug"`
+	Kind              string      `json:"kind"`
+	OwnerUserID       string      `json:"ownerUserId"`
+	Version           int64       `json:"version"`
+	DeletedAt         *time.Time  `json:"deletedAt,omitempty"`
+	PurgeAt           *time.Time  `json:"purgeAt,omitempty"`
+	CreatedAt         time.Time   `json:"createdAt"`
+	UpdatedAt         time.Time   `json:"updatedAt"`
 	CurrentMembership *Membership `json:"currentMembership,omitempty"`
 }
 
@@ -60,19 +60,19 @@ type Membership struct {
 }
 
 type Invitation struct {
-	ID string `json:"id"`
-	WorkspaceID string `json:"workspaceId"`
-	Email string `json:"email"`
-	Role Role `json:"role"`
-	ExpiresAt time.Time `json:"expiresAt"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspaceId"`
+	Email       string    `json:"email"`
+	Role        Role      `json:"role"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type BudgetPolicy struct {
 	WorkspaceID             string    `json:"workspaceId"`
 	Currency                string    `json:"currency"`
 	MonthlyLimitMicros      *int64    `json:"monthlyLimitMicros,omitempty"`
-	PerRunApprovalMicros    *int64    `json:"perRunApprovalMicros,omitempty"`
+	PerRunApprovalThresholdMicros *int64 `json:"perRunApprovalThresholdMicros,omitempty"`
 	EditorCanPublishLibrary bool      `json:"editorCanPublishLibrary"`
 	Version                 int64     `json:"version"`
 	UpdatedAt               time.Time `json:"updatedAt"`
@@ -94,25 +94,25 @@ type ProjectSettings struct {
 }
 
 type Project struct {
-	ID             string          `json:"id"`
-	WorkspaceID    string          `json:"workspaceId"`
-	Slug           string          `json:"slug"`
-	Status         string          `json:"status"`
-	Privacy        string          `json:"privacy"`
-	CurrentVersion int64           `json:"currentVersion"`
-	Settings       ProjectSettings `json:"settings"`
-	CreatedBy      string          `json:"createdBy"`
-	DeletedAt      *time.Time      `json:"deletedAt,omitempty"`
-	PurgeAt        *time.Time      `json:"purgeAt,omitempty"`
-	CreatedAt      time.Time       `json:"createdAt"`
-	UpdatedAt      time.Time       `json:"updatedAt"`
-	SourceTemplateID *string       `json:"sourceTemplateId,omitempty"`
-	SourceTemplateVersion *int64   `json:"sourceTemplateVersion,omitempty"`
+	ID                    string          `json:"id"`
+	WorkspaceID           string          `json:"workspaceId"`
+	Slug                  string          `json:"slug"`
+	Status                string          `json:"status"`
+	Privacy               string          `json:"privacy"`
+	CurrentVersion        int64           `json:"currentVersion"`
+	Settings              ProjectSettings `json:"settings"`
+	CreatedBy             string          `json:"createdBy"`
+	DeletedAt             *time.Time      `json:"deletedAt,omitempty"`
+	PurgeAt               *time.Time      `json:"purgeAt,omitempty"`
+	CreatedAt             time.Time       `json:"createdAt"`
+	UpdatedAt             time.Time       `json:"updatedAt"`
+	SourceTemplateID      *string         `json:"sourceTemplateId,omitempty"`
+	SourceTemplateVersion *int64          `json:"sourceTemplateVersion,omitempty"`
 }
 
 type ProjectCreateInput struct {
-	Name string `json:"name"`
-	TemplateID *string `json:"templateId,omitempty"`
+	Name              string           `json:"name"`
+	TemplateID        *string          `json:"templateId,omitempty"`
 	SettingsOverrides *ProjectSettings `json:"settingsOverrides,omitempty"`
 }
 

@@ -16,7 +16,7 @@ func (s *Store) AuthorizeSpend(ctx context.Context, userID, workspaceID string, 
 		if err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, `select workspace_id::text,currency,monthly_limit_micros,per_run_approval_micros,editor_can_publish_library,version,updated_at from workspace_policies where workspace_id=$1`, workspaceID).Scan(&policy.WorkspaceID, &policy.Currency, &policy.MonthlyLimitMicros, &policy.PerRunApprovalMicros, &policy.EditorCanPublishLibrary, &policy.Version, &policy.UpdatedAt)
+		return tx.QueryRow(ctx, `select workspace_id::text,currency,monthly_limit_micros,per_run_approval_micros,editor_can_publish_library,version,updated_at from workspace_policies where workspace_id=$1`, workspaceID).Scan(&policy.WorkspaceID, &policy.Currency, &policy.MonthlyLimitMicros, &policy.PerRunApprovalThresholdMicros, &policy.EditorCanPublishLibrary, &policy.Version, &policy.UpdatedAt)
 	})
 	if err != nil {
 		return domain.SpendDecision{}, err

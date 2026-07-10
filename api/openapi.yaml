@@ -55,6 +55,50 @@ paths:
                   sessionId: { type: string, format: uuid }
                   requiresVerification: { type: boolean }
         default: { $ref: '#/components/responses/Problem' }
+  /auth/email-link:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: requestEmailSignInLink
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                next: { type: string }
+      responses:
+        '202':
+          description: A generic accepted response whether or not an account exists.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent, retryAfterSeconds]
+                properties:
+                  sent: { type: boolean }
+                  retryAfterSeconds: { type: integer }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/reauth:
+    post:
+      tags: [Auth]
+      operationId: reauthenticateSession
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties: { idToken: { type: string } }
+      responses:
+        '200': { description: Recent authentication refreshed }
+        default: { $ref: '#/components/responses/Problem' }
   /auth/sessions:
     get:
       tags: [Auth]
@@ -140,6 +184,8 @@ paths:
     get:
       tags: [Workspaces]
       operationId: listWorkspaces
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [active, trashed] } }
       responses:
         '200':
           description: Workspaces visible to the caller.
@@ -184,6 +230,26 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/Workspace' } } }
         default: { $ref: '#/components/responses/Problem' }
   /workspaces/{workspaceId}:
+    patch:
+      tags: [Workspaces]
+      operationId: updateWorkspace
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { $ref: '#/components/parameters/IfMatch' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties: { name: { type: string, minLength: 2, maxLength: 120 } }
+      responses:
+        '200':
+          description: Workspace updated.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Workspace' } } }
+        default: { $ref: '#/components/responses/Problem' }
     delete:
       tags: [Workspaces]
       operationId: trashWorkspace
@@ -193,7 +259,7 @@ paths:
         - { $ref: '#/components/parameters/CsrfToken' }
         - { $ref: '#/components/parameters/IdempotencyKey' }
       responses:
-        '204': { description: Workspace moved to trash lifecycle }
+        '202': { description: Workspace moved to trash lifecycle }
         default: { $ref: '#/components/responses/Problem' }
   /workspaces/{workspaceId}/restore:
     post:
@@ -240,6 +306,21 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/Membership' } } }
         default: { $ref: '#/components/responses/Problem' }
   /workspaces/{workspaceId}/invitations:
+    get:
+      tags: [Workspaces]
+      operationId: listInvitations
+      parameters: [{ $ref: '#/components/parameters/WorkspaceId' }]
+      responses:
+        '200':
+          description: Pending invitations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Invitation' } }
+        default: { $ref: '#/components/responses/Problem' }
     post:
       tags: [Workspaces]
       operationId: createInvitation
@@ -254,6 +335,17 @@ paths:
         '201':
           description: Invitation created and mailed.
           content: { application/json: { schema: { $ref: '#/components/schemas/Invitation' } } }
+        default: { $ref: '#/components/responses/Problem' }
+  /workspaces/{workspaceId}/invitations/{invitationId}:
+    delete:
+      tags: [Workspaces]
+      operationId: revokeInvitation
+      parameters:
+        - { $ref: '#/components/parameters/WorkspaceId' }
+        - { name: invitationId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '204': { description: Invitation revoked }
         default: { $ref: '#/components/responses/Problem' }
   /invitations/accept:
     post:
@@ -348,7 +440,7 @@ paths:
         - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/ProjectSettings' } } }
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProjectCreateInput' } } }
       responses:
         '201':
           description: Project created.
@@ -822,6 +914,9 @@ components:
         ownerUserId: { type: string, format: uuid }
         status: { type: string, enum: [active, trashed], default: active }
         version: { type: integer, format: int64 }
+        deletedAt: { type: [string, 'null'], format: date-time }
+        purgeAt: { type: [string, 'null'], format: date-time }
+        currentMembership: { $ref: '#/components/schemas/Membership' }
     Role: { type: string, enum: [owner, admin, editor, reviewer, viewer] }
     Membership:
       type: object
@@ -837,6 +932,7 @@ components:
         canSpend: { type: boolean }
         monthlyLimitMicros: { type: [integer, 'null'], format: int64 }
         perRunLimitMicros: { type: [integer, 'null'], format: int64 }
+        libraryPublish: { type: boolean }
     MemberUpdate:
       type: object
       properties:
@@ -844,6 +940,7 @@ components:
         canSpend: { type: boolean }
         monthlyLimitMicros: { type: [integer, 'null'], format: int64 }
         perRunLimitMicros: { type: [integer, 'null'], format: int64 }
+        libraryPublish: { type: boolean }
         remove: { type: boolean }
     InvitationCreate:
       type: object
@@ -860,6 +957,7 @@ components:
         email: { type: string, format: email }
         role: { $ref: '#/components/schemas/Role' }
         expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
         developmentToken: { type: [string, 'null'] }
     BudgetPolicy:
       type: object
@@ -869,6 +967,7 @@ components:
         currency: { type: string, default: USD }
         monthlyLimitMicros: { type: [integer, 'null'], format: int64 }
         perRunApprovalThresholdMicros: { type: [integer, 'null'], format: int64 }
+        editorCanPublishLibrary: { type: boolean }
         version: { type: integer, format: int64 }
     BudgetPolicyUpdate:
       type: object
@@ -876,6 +975,7 @@ components:
         currency: { type: string, default: USD }
         monthlyLimitMicros: { type: [integer, 'null'], format: int64 }
         perRunApprovalThresholdMicros: { type: [integer, 'null'], format: int64 }
+        editorCanPublishLibrary: { type: boolean }
     ProductionFormat:
       type: string
       enum: [short_film, feature, episodic, music_video, advertisement, trailer, other]
@@ -895,6 +995,13 @@ components:
         styleDirection: { type: string, maxLength: 2000, default: '' }
         qualityPolicy: { type: string, enum: [draft, balanced, final], default: balanced }
         costCeilingMicros: { type: [integer, 'null'], format: int64, minimum: 0 }
+    ProjectCreateInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        templateId: { type: [string, 'null'], format: uuid }
+        settingsOverrides: { $ref: '#/components/schemas/ProjectSettings' }
     Project:
       type: object
       required: [id, workspaceId, slug, status, privacy, currentVersion, settings]
@@ -908,6 +1015,8 @@ components:
         settings: { $ref: '#/components/schemas/ProjectSettings' }
         deletedAt: { type: [string, 'null'], format: date-time }
         purgeAt: { type: [string, 'null'], format: date-time }
+        sourceTemplateId: { type: [string, 'null'], format: uuid }
+        sourceTemplateVersion: { type: [integer, 'null'], format: int64 }
     ProjectVersion:
       type: object
       required: [id, projectId, version, settings, createdAt]

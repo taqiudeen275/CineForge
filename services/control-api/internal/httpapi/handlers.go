@@ -19,6 +19,7 @@ import (
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, currentUser(r))
 }
+func (s *Server) getMFAStatus(w http.ResponseWriter,r *http.Request){u:=currentUser(r);record,err:=s.auth.GetUser(r.Context(),u.IdentityProviderUID);if err!=nil{internal(s,w,r,err);return};factors:=0;if record.MultiFactor!=nil{factors=len(record.MultiFactor.EnrolledFactors)};writeJSON(w,200,map[string]any{"enrolled":factors>0,"factorCount":factors,"recentChallenge":r.Context().Value(userKey).(principal).MFA})}
 func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	version, err := parseVersion(r)
@@ -107,16 +108,47 @@ func (s *Server) bootstrapWorkspace(w http.ResponseWriter, r *http.Request) {
 		handleError(s, w, r, err)
 		return
 	}
+	m, err := s.store.Membership(r.Context(), u.ID, out.ID)
+	if err == nil {
+		out.CurrentMembership = &m
+	}
 	writeJSON(w, 200, out)
 }
 func (s *Server) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	out, err := s.store.ListWorkspaces(r.Context(), u.ID)
+	out, err := s.store.ListWorkspaces(r.Context(), u.ID, r.URL.Query().Get("status"))
 	if err != nil {
 		handleError(s, w, r, err)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"items": out})
+}
+
+func (s *Server) updateWorkspace(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	version, err := parseVersion(r)
+	if err != nil {
+		problem(w, 428, "precondition_required", "A valid If-Match version is required")
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if len(req.Name) < 2 || len(req.Name) > 120 {
+		problem(w, 400, "invalid_name", "Workspace name must be 2 to 120 characters")
+		return
+	}
+	out, err := s.store.UpdateWorkspace(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), req.Name, version)
+	if err != nil {
+		handleError(s, w, r, err)
+		return
+	}
+	w.Header().Set("ETag", strconv.FormatInt(out.Version, 10))
+	writeJSON(w, 200, out)
 }
 func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
@@ -154,12 +186,30 @@ func (s *Server) updateMember(w http.ResponseWriter, r *http.Request) {
 		MonthlyLimitMicros *int64      `json:"monthlyLimitMicros"`
 		PerRunLimitMicros  *int64      `json:"perRunLimitMicros"`
 		LibraryPublish     bool        `json:"libraryPublish"`
+		Remove             bool        `json:"remove"`
 	}
 	if !decode(w, r, &req) {
 		return
 	}
-	err := s.store.UpdateMember(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), chi.URLParam(r, "memberID"), req.Role, req.CanSpend, req.MonthlyLimitMicros, req.PerRunLimitMicros, req.LibraryPublish)
+	out, err := s.store.UpdateMember(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), chi.URLParam(r, "memberID"), req.Role, req.CanSpend, req.MonthlyLimitMicros, req.PerRunLimitMicros, req.LibraryPublish, req.Remove)
 	if err != nil {
+		handleError(s, w, r, err)
+		return
+	}
+	writeJSON(w, 200, out)
+}
+func (s *Server) listInvitations(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	out, err := s.store.ListInvitations(r.Context(), u.ID, chi.URLParam(r, "workspaceID"))
+	if err != nil {
+		handleError(s, w, r, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": out})
+}
+func (s *Server) revokeInvitation(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if err := s.store.RevokeInvitation(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), chi.URLParam(r, "invitationID")); err != nil {
 		handleError(s, w, r, err)
 		return
 	}
@@ -183,7 +233,7 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request) {
 	if err := s.sendInvitation(req.Email, token); err != nil {
 		s.log.Warn("invitation email delivery failed", "invitationId", id, "error", err)
 	}
-	out := map[string]any{"id": id, "expiresInDays": 7}
+	out := map[string]any{"id": id, "workspaceId": chi.URLParam(r, "workspaceID"), "email": strings.ToLower(strings.TrimSpace(req.Email)), "role": req.Role, "expiresAt": time.Now().Add(7 * 24 * time.Hour)}
 	if s.cfg.Environment == "development" {
 		out["developmentToken"] = token
 	}
@@ -207,12 +257,12 @@ func (s *Server) acceptInvitation(w http.ResponseWriter, r *http.Request) {
 func (s *Server) transferOwnership(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	var req struct {
-		UserID string `json:"userId"`
+		MemberID string `json:"memberId"`
 	}
 	if !decode(w, r, &req) {
 		return
 	}
-	if err := s.store.TransferOwnership(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), req.UserID); err != nil {
+	if err := s.store.TransferOwnership(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), req.MemberID); err != nil {
 		handleError(s, w, r, err)
 		return
 	}
@@ -309,16 +359,24 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	var req domain.ProjectSettings
+	var req domain.ProjectCreateInput
 	if !decode(w, r, &req) {
 		return
 	}
-	req = defaultProject(req, u)
-	if !validateProject(req) {
+	if strings.TrimSpace(req.Name) == "" || len(req.Name) > 160 {
+		problem(w, 400, "invalid_project", "Project name is required")
+		return
+	}
+	if req.SettingsOverrides != nil {
+		v := defaultProject(*req.SettingsOverrides, u)
+		v.Name = req.Name
+		req.SettingsOverrides = &v
+	}
+	if req.SettingsOverrides != nil && !validateProject(*req.SettingsOverrides) {
 		problem(w, 400, "invalid_project", "Project settings are invalid")
 		return
 	}
-	out, err := s.store.CreateProject(r.Context(), u.ID, chi.URLParam(r, "workspaceID"), req)
+	out, err := s.store.CreateProjectFromTemplate(r.Context(), u, chi.URLParam(r, "workspaceID"), req)
 	if err != nil {
 		handleError(s, w, r, err)
 		return

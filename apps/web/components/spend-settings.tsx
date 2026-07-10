@@ -1,17 +1,11 @@
 "use client";
 import { apiFetch } from "@cineforge/api-client";
+import type { components } from "@cineforge/api-client";
 import { useEffect, useState } from "react";
 import { useShell } from "@/components/app-shell";
 import { Button, Field, Input, PageHeader } from "@/components/ui";
 import { SettingsNav } from "@/components/settings-nav";
-type Policy = {
-  workspaceId: string;
-  currency: string;
-  monthlyLimitMicros?: number | null;
-  perRunApprovalMicros?: number | null;
-  editorCanPublishLibrary: boolean;
-  version: number;
-};
+type Policy = components["schemas"]["BudgetPolicy"];
 export function SpendSettings() {
   const { workspace, user } = useShell();
   const [p, setP] = useState<Policy>();
@@ -35,7 +29,7 @@ export function SpendSettings() {
       body: {
         ...policy,
         monthlyLimitMicros: dollars("monthly"),
-        perRunApprovalMicros: dollars("approval"),
+        perRunApprovalThresholdMicros: dollars("approval"),
         editorCanPublishLibrary: f.get("publish") === "on",
       },
     });
@@ -74,7 +68,7 @@ export function SpendSettings() {
                 min="0"
                 step="0.01"
                 defaultValue={
-                  p.perRunApprovalMicros ? String(p.perRunApprovalMicros / 1_000_000) : ""
+                  p.perRunApprovalThresholdMicros ? String(p.perRunApprovalThresholdMicros / 1_000_000) : ""
                 }
                 disabled={!owner}
               />

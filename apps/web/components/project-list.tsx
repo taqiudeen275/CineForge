@@ -1,79 +1,15 @@
 "use client";
 import type { components } from "@cineforge/api-client";
 import { apiFetch } from "@cineforge/api-client";
-import { Plus } from "lucide-react";
+import { ArchiveRestore, Film, Plus, Search, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { EmptyState, PageHeader } from "@/components/ui";
+import { Button, EmptyState, Input, PageHeader } from "@/components/ui";
 import { useShell } from "@/components/app-shell";
-type Project = components["schemas"]["Project"];
-export function ProjectList() {
-  const { workspace } = useShell();
-  const [items, setItems] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    if (workspace)
-      apiFetch<{ items: Project[] }>(`/v1/workspaces/${workspace.id}/projects?status=active`)
-        .then((v) => setItems(v.items))
-        .finally(() => setLoading(false));
-  }, [workspace]);
-  if (!workspace) return null;
-  return (
-    <>
-      <PageHeader
-        eyebrow="Workspace"
-        title="Projects"
-        description="Private story productions and their current settings."
-        action={
-          <Link
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-4 text-sm font-medium text-white"
-            href={`/app/${workspace.slug}/projects/new`}
-          >
-            <Plus size={16} />
-            New project
-          </Link>
-        }
-      />
-      {loading ? (
-        <p className="py-16 text-sm text-[var(--muted)]">Loading projects…</p>
-      ) : items.length ? (
-        <div className="divide-y divide-[var(--line)]">
-          {items.map((p) => (
-            <Link
-              key={p.id}
-              href={`/app/${workspace.slug}/projects/${p.id}`}
-              className="grid gap-2 py-6 sm:grid-cols-[1fr_auto] sm:items-center"
-            >
-              <div>
-                <h2 className="m-0 text-base font-medium">{p.settings.name}</h2>
-                <p className="mb-0 mt-1 text-sm text-[var(--muted)]">
-                  {label(p.settings.productionFormat)} · {p.settings.aspectWidth ?? 16}:
-                  {p.settings.aspectHeight ?? 9} · Private
-                </p>
-              </div>
-              <span className="text-sm text-[var(--muted)]">
-                Updated version {p.currentVersion}
-              </span>
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          title="Create the first project"
-          description="Start with a name and format. Every project is private by default."
-          action={
-            <Link
-              className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white"
-              href={`/app/${workspace.slug}/projects/new`}
-            >
-              New project
-            </Link>
-          }
-        />
-      )}
-    </>
-  );
-}
-function label(v: string) {
-  return v.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
+type Project=components["schemas"]["Project"];type Status="active"|"archived"|"trashed";
+export function ProjectList(){const{workspace,canEdit}=useShell();const[items,setItems]=useState<Project[]>([]);const[status,setStatus]=useState<Status>("active");const[query,setQuery]=useState("");const[loading,setLoading]=useState(true);const[error,setError]=useState("");
+ useEffect(()=>{const timer=setTimeout(()=>void load(),query?250:0);return()=>clearTimeout(timer)},[workspace,status,query]);
+ async function load(){if(!workspace)return;setLoading(true);setError("");try{const r=await apiFetch<{items:Project[]}>(`/v1/workspaces/${workspace.id}/projects?status=${status}&q=${encodeURIComponent(query)}`);setItems(r.items)}catch(e){setError(e instanceof Error?e.message:"Could not load projects")}finally{setLoading(false)}}
+ async function restore(id:string){await apiFetch(`/v1/projects/${id}/restore`,{method:"POST",body:{}});await load()}
+ if(!workspace)return null;return <><PageHeader eyebrow={`${workspace.name} · ${workspace.currentMembership?.role??"member"}`} title="Projects" description="Private productions, templates, and production settings in one place." action={canEdit?<Link className="button button-primary" href={`/app/${workspace.slug}/projects/new`}><Plus size={16}/>New project</Link>:undefined}/><div className="project-toolbar"><div className="status-tabs" role="tablist">{(["active","archived","trashed"] as Status[]).map(v=><button key={v} className={status===v?"active":""} onClick={()=>setStatus(v)}>{v==="trashed"?"Trash":label(v)}</button>)}</div><label className="project-search"><Search size={16}/><Input aria-label="Search projects" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search projects"/></label></div>{error?<div className="inline-alert" role="alert">{error}<Button variant="quiet" onClick={()=>void load()}>Retry</Button></div>:loading?<div className="project-grid">{[1,2,3].map(v=><div key={v} className="project-skeleton"/>)}</div>:items.length?<div className="project-grid">{items.map((p,i)=><article className="project-card" key={p.id}><Link href={`/app/${workspace.slug}/projects/${p.id}`}><div className={`project-poster tone-${i%4}`}><Film/><span>{p.settings.aspectWidth??16}:{p.settings.aspectHeight??9}</span></div><div className="project-card-body"><div><span className="privacy-chip"><ShieldCheck size={12}/> Private</span><h2>{p.settings.name}</h2><p>{label(p.settings.productionFormat)} · {p.settings.frameRateNumerator??24} fps · v{p.currentVersion}</p></div></div></Link>{status!=="active"&&canEdit?<Button variant="quiet" onClick={()=>void restore(p.id)}><ArchiveRestore size={15}/>Restore</Button>:null}</article>)}</div>:<EmptyState title={status==="active"?"Create your first production":`No ${status} projects`} description={status==="active"?"Start blank or choose a production template. Every project is private by default.":"Projects moved here will appear with their recovery options."} action={status==="active"&&canEdit?<Link className="button button-primary" href={`/app/${workspace.slug}/projects/new`}>Create project</Link>:undefined}/>}</>}
+function label(v:string){return v.replaceAll("_"," ").replace(/\b\w/g,c=>c.toUpperCase())}

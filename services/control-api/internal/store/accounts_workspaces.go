@@ -126,13 +126,22 @@ func (s *Store) CreateTeamWorkspace(ctx context.Context, userID, name string) (d
 func (s *Store) UpdateWorkspace(ctx context.Context, userID, wid, name string, expected int64) (domain.Workspace, error) {
 	var ws domain.Workspace
 	err := s.withUserTx(ctx, userID, func(tx pgx.Tx) error {
-		if _, err := requireRole(ctx, tx, userID, wid, domain.RoleOwner, domain.RoleAdmin); err != nil { return err }
+		if _, err := requireRole(ctx, tx, userID, wid, domain.RoleOwner, domain.RoleAdmin); err != nil {
+			return err
+		}
 		tag, err := tx.Exec(ctx, `update workspaces set name=$1,version=version+1,updated_at=now() where id=$2 and version=$3 and deleted_at is null`, name, wid, expected)
-		if err != nil { return err }; if tag.RowsAffected()!=1 { return ErrConflict }
-		if err := audit(ctx,tx,wid,userID,"workspace.updated","workspace",wid,map[string]any{"name":name}); err != nil{return err}
-		return scanWorkspace(tx.QueryRow(ctx,workspaceSelect+` where id=$1`,wid),&ws)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return ErrConflict
+		}
+		if err := audit(ctx, tx, wid, userID, "workspace.updated", "workspace", wid, map[string]any{"name": name}); err != nil {
+			return err
+		}
+		return scanWorkspace(tx.QueryRow(ctx, workspaceSelect+` where id=$1`, wid), &ws)
 	})
-	return ws,err
+	return ws, err
 }
 
 func (s *Store) ListMembers(ctx context.Context, userID, wid string) ([]domain.Membership, error) {
@@ -158,14 +167,44 @@ func (s *Store) ListMembers(ctx context.Context, userID, wid string) ([]domain.M
 	return out, err
 }
 
-func (s *Store) ListInvitations(ctx context.Context,userID,wid string)([]domain.Invitation,error){
-	out:=[]domain.Invitation{};err:=s.withUserTx(ctx,userID,func(tx pgx.Tx)error{
-		if _,err:=requireRole(ctx,tx,userID,wid,domain.RoleOwner,domain.RoleAdmin);err!=nil{return err}
-		rows,err:=tx.Query(ctx,`select id::text,workspace_id::text,email,role::text,expires_at,created_at from invitations where workspace_id=$1 and accepted_at is null and revoked_at is null order by created_at desc`,wid);if err!=nil{return err};defer rows.Close()
-		for rows.Next(){var v domain.Invitation;if err:=rows.Scan(&v.ID,&v.WorkspaceID,&v.Email,&v.Role,&v.ExpiresAt,&v.CreatedAt);err!=nil{return err};out=append(out,v)};return rows.Err()});return out,err
+func (s *Store) ListInvitations(ctx context.Context, userID, wid string) ([]domain.Invitation, error) {
+	out := []domain.Invitation{}
+	err := s.withUserTx(ctx, userID, func(tx pgx.Tx) error {
+		if _, err := requireRole(ctx, tx, userID, wid, domain.RoleOwner, domain.RoleAdmin); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `select id::text,workspace_id::text,email,role::text,expires_at,created_at from invitations where workspace_id=$1 and accepted_at is null and revoked_at is null order by created_at desc`, wid)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var v domain.Invitation
+			if err := rows.Scan(&v.ID, &v.WorkspaceID, &v.Email, &v.Role, &v.ExpiresAt, &v.CreatedAt); err != nil {
+				return err
+			}
+			out = append(out, v)
+		}
+		return rows.Err()
+	})
+	return out, err
 }
 
-func (s *Store) RevokeInvitation(ctx context.Context,userID,wid,id string)error{return s.withUserTx(ctx,userID,func(tx pgx.Tx)error{if _,err:=requireRole(ctx,tx,userID,wid,domain.RoleOwner,domain.RoleAdmin);err!=nil{return err};tag,err:=tx.Exec(ctx,`update invitations set revoked_at=now() where id=$1 and workspace_id=$2 and accepted_at is null and revoked_at is null`,id,wid);if err!=nil{return err};if tag.RowsAffected()!=1{return ErrNotFound};return audit(ctx,tx,wid,userID,"invitation.revoked","invitation",id,nil)})}
+func (s *Store) RevokeInvitation(ctx context.Context, userID, wid, id string) error {
+	return s.withUserTx(ctx, userID, func(tx pgx.Tx) error {
+		if _, err := requireRole(ctx, tx, userID, wid, domain.RoleOwner, domain.RoleAdmin); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `update invitations set revoked_at=now() where id=$1 and workspace_id=$2 and accepted_at is null and revoked_at is null`, id, wid)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return ErrNotFound
+		}
+		return audit(ctx, tx, wid, userID, "invitation.revoked", "invitation", id, nil)
+	})
+}
 
 func (s *Store) CreateInvitation(ctx context.Context, userID, wid, email string, role domain.Role, token string, expires time.Time) (string, error) {
 	id := uuid.Must(uuid.NewV7()).String()
@@ -218,9 +257,9 @@ func (s *Store) AcceptInvitation(ctx context.Context, user domain.User, token st
 	return ws, err
 }
 
-func (s *Store) UpdateMember(ctx context.Context, userID, wid, memberID string, role domain.Role, canSpend bool, monthly, perRun *int64, libraryPublish, remove bool) (domain.Membership,error) {
+func (s *Store) UpdateMember(ctx context.Context, userID, wid, memberID string, role domain.Role, canSpend bool, monthly, perRun *int64, libraryPublish, remove bool) (domain.Membership, error) {
 	var out domain.Membership
-	err:=s.withUserTx(ctx, userID, func(tx pgx.Tx) error {
+	err := s.withUserTx(ctx, userID, func(tx pgx.Tx) error {
 		actor, err := requireRole(ctx, tx, userID, wid, domain.RoleOwner, domain.RoleAdmin)
 		if err != nil {
 			return err
@@ -238,14 +277,20 @@ func (s *Store) UpdateMember(ctx context.Context, userID, wid, memberID string, 
 		if actor.Role != domain.RoleOwner && (canSpend || monthly != nil || perRun != nil) {
 			return ErrForbidden
 		}
-		if remove { _,err=tx.Exec(ctx,`update memberships set status='removed',removed_at=now(),updated_at=now() where id=$1 and workspace_id=$2`,memberID,wid) } else { _, err = tx.Exec(ctx, `update memberships set role=$1,can_spend=$2,monthly_limit_micros=$3,per_run_limit_micros=$4,library_publish=$5,updated_at=now() where id=$6 and workspace_id=$7`, role, canSpend, monthly, perRun, libraryPublish, memberID, wid) }
+		if remove {
+			_, err = tx.Exec(ctx, `update memberships set status='removed',removed_at=now(),updated_at=now() where id=$1 and workspace_id=$2`, memberID, wid)
+		} else {
+			_, err = tx.Exec(ctx, `update memberships set role=$1,can_spend=$2,monthly_limit_micros=$3,per_run_limit_micros=$4,library_publish=$5,updated_at=now() where id=$6 and workspace_id=$7`, role, canSpend, monthly, perRun, libraryPublish, memberID, wid)
+		}
 		if err != nil {
 			return err
 		}
-		if err:=audit(ctx, tx, wid, userID, "membership.updated", "membership", memberID, map[string]any{"role": role,"removed":remove});err!=nil{return err}
-		return tx.QueryRow(ctx,`select m.id::text,m.workspace_id::text,m.user_id::text,u.email,u.display_name,m.role::text,m.status::text,m.can_spend,m.monthly_limit_micros,m.per_run_limit_micros,m.library_publish,m.created_at,m.updated_at,m.removed_at from memberships m join users u on u.id=m.user_id where m.id=$1`,memberID).Scan(&out.ID,&out.WorkspaceID,&out.UserID,&out.Email,&out.DisplayName,&out.Role,&out.Status,&out.CanSpend,&out.MonthlyLimitMicros,&out.PerRunLimitMicros,&out.LibraryPublish,&out.CreatedAt,&out.UpdatedAt,&out.RemovedAt)
+		if err := audit(ctx, tx, wid, userID, "membership.updated", "membership", memberID, map[string]any{"role": role, "removed": remove}); err != nil {
+			return err
+		}
+		return tx.QueryRow(ctx, `select m.id::text,m.workspace_id::text,m.user_id::text,u.email,u.display_name,m.role::text,m.status::text,m.can_spend,m.monthly_limit_micros,m.per_run_limit_micros,m.library_publish,m.created_at,m.updated_at,m.removed_at from memberships m join users u on u.id=m.user_id where m.id=$1`, memberID).Scan(&out.ID, &out.WorkspaceID, &out.UserID, &out.Email, &out.DisplayName, &out.Role, &out.Status, &out.CanSpend, &out.MonthlyLimitMicros, &out.PerRunLimitMicros, &out.LibraryPublish, &out.CreatedAt, &out.UpdatedAt, &out.RemovedAt)
 	})
-	return out,err
+	return out, err
 }
 
 func (s *Store) TransferOwnership(ctx context.Context, userID, wid, memberID string) error {
@@ -253,8 +298,8 @@ func (s *Store) TransferOwnership(ctx context.Context, userID, wid, memberID str
 		if _, err := requireRole(ctx, tx, userID, wid, domain.RoleOwner); err != nil {
 			return err
 		}
-		var targetID,targetUserID string
-		if err := tx.QueryRow(ctx, `select id::text,user_id::text from memberships where workspace_id=$1 and id=$2 and status='active' and role<>'owner' for update`, wid, memberID).Scan(&targetID,&targetUserID); err != nil {
+		var targetID, targetUserID string
+		if err := tx.QueryRow(ctx, `select id::text,user_id::text from memberships where workspace_id=$1 and id=$2 and status='active' and role<>'owner' for update`, wid, memberID).Scan(&targetID, &targetUserID); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `update memberships set role='admin',updated_at=now() where workspace_id=$1 and user_id=$2`, wid, userID); err != nil {

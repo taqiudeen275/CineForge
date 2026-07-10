@@ -36,6 +36,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/email-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["requestEmailSignInLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/reauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reauthenticateSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sessions": {
         parameters: {
             query?: never;
@@ -195,7 +227,7 @@ export interface paths {
         delete: operations["trashWorkspace"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["updateWorkspace"];
         trace?: never;
     };
     "/workspaces/{workspaceId}/restore": {
@@ -253,10 +285,26 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["listInvitations"];
         put?: never;
         post: operations["createInvitation"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspaceId}/invitations/{invitationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revokeInvitation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -679,6 +727,11 @@ export interface components {
             status: "active" | "trashed";
             /** Format: int64 */
             version: number;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            /** Format: date-time */
+            purgeAt?: string | null;
+            currentMembership?: components["schemas"]["Membership"];
         };
         /** @enum {string} */
         Role: "owner" | "admin" | "editor" | "reviewer" | "viewer";
@@ -700,6 +753,7 @@ export interface components {
             monthlyLimitMicros?: number | null;
             /** Format: int64 */
             perRunLimitMicros?: number | null;
+            libraryPublish?: boolean;
         };
         MemberUpdate: {
             role?: components["schemas"]["Role"];
@@ -708,6 +762,7 @@ export interface components {
             monthlyLimitMicros?: number | null;
             /** Format: int64 */
             perRunLimitMicros?: number | null;
+            libraryPublish?: boolean;
             remove?: boolean;
         };
         InvitationCreate: {
@@ -725,6 +780,8 @@ export interface components {
             role: components["schemas"]["Role"];
             /** Format: date-time */
             expiresAt: string;
+            /** Format: date-time */
+            createdAt?: string;
             developmentToken?: string | null;
         };
         BudgetPolicy: {
@@ -736,6 +793,7 @@ export interface components {
             monthlyLimitMicros?: number | null;
             /** Format: int64 */
             perRunApprovalThresholdMicros?: number | null;
+            editorCanPublishLibrary?: boolean;
             /** Format: int64 */
             version: number;
         };
@@ -746,6 +804,7 @@ export interface components {
             monthlyLimitMicros?: number | null;
             /** Format: int64 */
             perRunApprovalThresholdMicros?: number | null;
+            editorCanPublishLibrary?: boolean;
         };
         /** @enum {string} */
         ProductionFormat: "short_film" | "feature" | "episodic" | "music_video" | "advertisement" | "trailer" | "other";
@@ -779,6 +838,12 @@ export interface components {
             /** Format: int64 */
             costCeilingMicros?: number | null;
         };
+        ProjectCreateInput: {
+            name: string;
+            /** Format: uuid */
+            templateId?: string | null;
+            settingsOverrides?: components["schemas"]["ProjectSettings"];
+        };
         Project: {
             /** Format: uuid */
             id: string;
@@ -796,6 +861,10 @@ export interface components {
             deletedAt?: string | null;
             /** Format: date-time */
             purgeAt?: string | null;
+            /** Format: uuid */
+            sourceTemplateId?: string | null;
+            /** Format: int64 */
+            sourceTemplateVersion?: number | null;
         };
         ProjectVersion: {
             /** Format: uuid */
@@ -1033,6 +1102,67 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
+    requestEmailSignInLink: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    next?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description A generic accepted response whether or not an account exists. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sent: boolean;
+                        retryAfterSeconds: number;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    reauthenticateSession: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    idToken: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Recent authentication refreshed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     listSessions: {
         parameters: {
             query?: never;
@@ -1215,7 +1345,9 @@ export interface operations {
     };
     listWorkspaces: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "active" | "trashed";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1304,11 +1436,43 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Workspace moved to trash lifecycle */
-            204: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateWorkspace: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": components["parameters"]["IfMatch"];
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Workspace updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
             };
             default: components["responses"]["Problem"];
         };
@@ -1391,6 +1555,31 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
+    listInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending invitations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Invitation"][];
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     createInvitation: {
         parameters: {
             query?: never;
@@ -1417,6 +1606,30 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Invitation"];
                 };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    revokeInvitation: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };
@@ -1574,7 +1787,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProjectSettings"];
+                "application/json": components["schemas"]["ProjectCreateInput"];
             };
         };
         responses: {

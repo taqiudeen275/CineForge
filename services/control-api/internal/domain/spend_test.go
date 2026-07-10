@@ -4,7 +4,7 @@ import "testing"
 
 func TestAuthorizeSpend(t *testing.T) {
 	workspaceLimit, memberLimit, runLimit, approval := int64(10_000), int64(5_000), int64(2_000), int64(1_000)
-	policy := BudgetPolicy{MonthlyLimitMicros: &workspaceLimit, PerRunApprovalMicros: &approval}
+	policy := BudgetPolicy{MonthlyLimitMicros: &workspaceLimit, PerRunApprovalThresholdMicros: &approval}
 	member := Membership{CanSpend: true, MonthlyLimitMicros: &memberLimit, PerRunLimitMicros: &runLimit}
 
 	if got := AuthorizeSpend(policy, member, SpendRequest{AmountMicros: 1_500}); !got.Allowed || !got.ApprovalRequired {

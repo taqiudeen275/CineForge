@@ -50,6 +50,7 @@ const userKey contextKey = "user"
 type principal struct {
 	User     domain.User
 	AuthTime time.Time
+	MFA      bool
 }
 
 func New(cfg config.Config, st *store.Store, authClient *auth.Client, temporalClient client.Client, logger *slog.Logger) *Server {
@@ -69,6 +70,7 @@ func (s *Server) Router() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.authenticate)
 			r.Get("/me", s.getMe)
+			r.Get("/me/mfa", s.getMFAStatus)
 			r.With(s.requireCSRF).Patch("/me", s.updateMe)
 			r.Get("/auth/sessions", s.listSessions)
 			r.With(s.requireCSRF).Delete("/auth/sessions/{sessionID}", s.revokeSession)
@@ -89,8 +91,8 @@ func (s *Server) Router() http.Handler {
 				r.With(s.requireCSRF, s.requireIdempotency).Post("/workspaces/{workspaceID}/invitations", s.createInvitation)
 				r.With(s.requireCSRF).Delete("/workspaces/{workspaceID}/invitations/{invitationID}", s.revokeInvitation)
 				r.With(s.requireCSRF).Post("/invitations/accept", s.acceptInvitation)
-				r.With(s.requireCSRF, s.requireRecentAuth).Post("/workspaces/{workspaceID}/ownership", s.transferOwnership)
-				r.With(s.requireCSRF, s.requireRecentAuth, s.requireIdempotency).Delete("/workspaces/{workspaceID}", s.trashWorkspace)
+				r.With(s.requireCSRF, s.requireRecentAuth, s.requireMFA).Post("/workspaces/{workspaceID}/ownership", s.transferOwnership)
+				r.With(s.requireCSRF, s.requireRecentAuth, s.requireMFA, s.requireIdempotency).Delete("/workspaces/{workspaceID}", s.trashWorkspace)
 				r.With(s.requireCSRF).Post("/workspaces/{workspaceID}/restore", s.restoreWorkspace)
 				r.Get("/workspaces/{workspaceID}/budget-policy", s.getBudget)
 				r.With(s.requireCSRF).Put("/workspaces/{workspaceID}/budget-policy", s.updateBudget)
@@ -160,7 +162,7 @@ func (s *Server) requestEmailLink(w http.ResponseWriter, r *http.Request) {
 }
 
 func safeNext(value string) string {
-	if value == "/app" || strings.HasPrefix(value, "/app/") {
+	if value == "/app" || strings.HasPrefix(value, "/app/") || strings.HasPrefix(value, "/invite?token=") {
 		return value
 	}
 	return "/app"
@@ -356,7 +358,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			return
 		}
 		authTime := time.Unix(claimInt64(token.Claims, "auth_time"), 0)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, principal{User: user, AuthTime: authTime})))
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, principal{User: user, AuthTime: authTime, MFA: tokenHasMFA(token.Claims)})))
 	})
 }
 
@@ -380,6 +382,18 @@ func (s *Server) requireRecentAuth(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+func (s *Server) requireMFA(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+		p:=r.Context().Value(userKey).(principal);record,err:=s.auth.GetUser(r.Context(),p.User.IdentityProviderUID)
+		if err!=nil{internal(s,w,r,err);return}
+		if record.MultiFactor==nil||len(record.MultiFactor.EnrolledFactors)==0{problem(w,http.StatusForbidden,"mfa_enrollment_required","Set up an authenticator before this high-risk action");return}
+		if !p.MFA{problem(w,http.StatusUnauthorized,"mfa_challenge_required","Complete multi-factor authentication to continue");return}
+		next.ServeHTTP(w,r)
+	})
+}
+
+func tokenHasMFA(claims map[string]any) bool { if fb,ok:=claims["firebase"].(map[string]any);ok { if v,ok:=fb["sign_in_second_factor"].(string);ok&&v!=""{return true} }; return false }
 
 func (s *Server) reauthenticate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -410,7 +424,7 @@ func (s *Server) sendInvitation(email, token string) error {
 			from = from[start+1 : end]
 		}
 	}
-	message := []byte("From: " + s.cfg.MailFrom + "\r\nTo: " + email + "\r\nSubject: CineForge workspace invitation\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nAccept your invitation at " + s.cfg.WebOrigin + "/app?invitation=" + url.QueryEscape(token) + "\r\nThis invitation expires in seven days.\r\n")
+	message := []byte("From: " + s.cfg.MailFrom + "\r\nTo: " + email + "\r\nSubject: CineForge workspace invitation\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nAccept your invitation at " + s.cfg.WebOrigin + "/invite?token=" + url.QueryEscape(token) + "\r\nThis invitation expires in seven days.\r\n")
 	return smtp.SendMail(s.cfg.MailSMTPAddr, nil, from, []string{email}, message)
 }
 func setSessionCookies(w http.ResponseWriter, cfg config.Config, session, device string, maxAge int) {

@@ -228,38 +228,91 @@ func (s *Store) CreateProjectFromTemplate(ctx context.Context, user domain.User,
 	}
 	var p domain.Project
 	err := s.withUserTx(ctx, user.ID, func(tx pgx.Tx) error {
-		if _, err := requireRole(ctx, tx, user.ID, workspaceID, domain.RoleOwner, domain.RoleAdmin, domain.RoleEditor); err != nil { return err }
+		if _, err := requireRole(ctx, tx, user.ID, workspaceID, domain.RoleOwner, domain.RoleAdmin, domain.RoleEditor); err != nil {
+			return err
+		}
 		settings := domain.ProjectSettings{Name: input.Name, ProjectType: "single", ProductionFormat: "short_film", AspectWidth: 16, AspectHeight: 9, FrameRateNumerator: 24, FrameRateDenominator: 1, AudioLanguage: user.Locale, Rating: "moderate", QualityPolicy: "balanced"}
-		if settings.AudioLanguage == "" { settings.AudioLanguage = "en" }
+		if settings.AudioLanguage == "" {
+			settings.AudioLanguage = "en"
+		}
 		var templateID *string
 		var templateVersion *int64
 		var links []string
 		if input.TemplateID != nil {
 			item, err := templateByID(ctx, tx, *input.TemplateID)
-			if err != nil { return err }
-			if !item.System && (item.WorkspaceID == nil || *item.WorkspaceID != workspaceID) { return ErrForbidden }
+			if err != nil {
+				return err
+			}
+			if !item.System && (item.WorkspaceID == nil || *item.WorkspaceID != workspaceID) {
+				return ErrForbidden
+			}
 			settings = item.Settings
 			settings.Name = input.Name
-			if settings.AudioLanguage == "" { settings.AudioLanguage = user.Locale; if settings.AudioLanguage == "" { settings.AudioLanguage = "en" } }
+			if settings.AudioLanguage == "" {
+				settings.AudioLanguage = user.Locale
+				if settings.AudioLanguage == "" {
+					settings.AudioLanguage = "en"
+				}
+			}
 			links = item.LibraryLinks
 			templateID = &item.ID
-			v := item.CurrentVersion; templateVersion = &v
+			v := item.CurrentVersion
+			templateVersion = &v
 		}
 		if input.SettingsOverrides != nil {
 			o := input.SettingsOverrides
-			if o.ProjectType != "" { settings.ProjectType = o.ProjectType }; if o.ProductionFormat != "" { settings.ProductionFormat = o.ProductionFormat }
-			if o.AspectWidth > 0 { settings.AspectWidth, settings.AspectHeight = o.AspectWidth, o.AspectHeight }
-			if o.FrameRateNumerator > 0 { settings.FrameRateNumerator, settings.FrameRateDenominator = o.FrameRateNumerator, o.FrameRateDenominator }
-			if o.AudioLanguage != "" { settings.AudioLanguage = o.AudioLanguage }; if o.Rating != "" { settings.Rating = o.Rating }; if o.QualityPolicy != "" { settings.QualityPolicy = o.QualityPolicy }; if o.StyleDirection != "" { settings.StyleDirection = o.StyleDirection }; if o.CostCeilingMicros != nil { settings.CostCeilingMicros = o.CostCeilingMicros }
+			if o.ProjectType != "" {
+				settings.ProjectType = o.ProjectType
+			}
+			if o.ProductionFormat != "" {
+				settings.ProductionFormat = o.ProductionFormat
+			}
+			if o.AspectWidth > 0 {
+				settings.AspectWidth, settings.AspectHeight = o.AspectWidth, o.AspectHeight
+			}
+			if o.FrameRateNumerator > 0 {
+				settings.FrameRateNumerator, settings.FrameRateDenominator = o.FrameRateNumerator, o.FrameRateDenominator
+			}
+			if o.AudioLanguage != "" {
+				settings.AudioLanguage = o.AudioLanguage
+			}
+			if o.Rating != "" {
+				settings.Rating = o.Rating
+			}
+			if o.QualityPolicy != "" {
+				settings.QualityPolicy = o.QualityPolicy
+			}
+			if o.StyleDirection != "" {
+				settings.StyleDirection = o.StyleDirection
+			}
+			if o.CostCeilingMicros != nil {
+				settings.CostCeilingMicros = o.CostCeilingMicros
+			}
 		}
-		id := uuid.Must(uuid.NewV7()).String(); slug, err := uniqueProjectSlug(ctx, tx, workspaceID, settings.Name); if err != nil { return err }
-		if _, err = tx.Exec(ctx, `insert into projects(id,workspace_id,slug,created_by,source_template_id,source_template_version) values($1,$2,$3,$4,$5,$6)`, id, workspaceID, slug, user.ID, templateID, templateVersion); err != nil { return err }
-		if err = insertProjectVersion(ctx, tx, id, workspaceID, 1, user.ID, settings); err != nil { return err }
-		for _, versionID := range links { if _, err = tx.Exec(ctx, `insert into project_library_links(id,workspace_id,project_id,entity_id,entity_version_id,created_by) select gen_random_uuid(),$1,$2,entity_id,id,$3 from library_entity_versions where id=$4 and workspace_id=$1 and status='approved'`, workspaceID, id, user.ID, versionID); err != nil { return err } }
-		if err = audit(ctx, tx, workspaceID, user.ID, "project.created", "project", id, map[string]any{"name": settings.Name, "templateId": templateID}); err != nil { return err }
+		id := uuid.Must(uuid.NewV7()).String()
+		slug, err := uniqueProjectSlug(ctx, tx, workspaceID, settings.Name)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `insert into projects(id,workspace_id,slug,created_by,source_template_id,source_template_version) values($1,$2,$3,$4,$5,$6)`, id, workspaceID, slug, user.ID, templateID, templateVersion); err != nil {
+			return err
+		}
+		if err = insertProjectVersion(ctx, tx, id, workspaceID, 1, user.ID, settings); err != nil {
+			return err
+		}
+		for _, versionID := range links {
+			if _, err = tx.Exec(ctx, `insert into project_library_links(id,workspace_id,project_id,entity_id,entity_version_id,created_by) select gen_random_uuid(),$1,$2,entity_id,id,$3 from library_entity_versions where id=$4 and workspace_id=$1 and status='approved'`, workspaceID, id, user.ID, versionID); err != nil {
+				return err
+			}
+		}
+		if err = audit(ctx, tx, workspaceID, user.ID, "project.created", "project", id, map[string]any{"name": settings.Name, "templateId": templateID}); err != nil {
+			return err
+		}
 		return scanProject(tx.QueryRow(ctx, projectSelect+` where p.id=$1`, id), &p)
 	})
-	if errors.Is(err, pgx.ErrNoRows) { err = ErrNotFound }
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = ErrNotFound
+	}
 	return p, err
 }
 
@@ -398,7 +451,7 @@ func (s *Store) GetBudget(ctx context.Context, userID, wid string) (domain.Budge
 		if _, err := requireRole(ctx, tx, userID, wid, domain.RoleOwner, domain.RoleAdmin, domain.RoleEditor, domain.RoleReviewer, domain.RoleViewer); err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, `select workspace_id::text,currency,monthly_limit_micros,per_run_approval_micros,editor_can_publish_library,version,updated_at from workspace_policies where workspace_id=$1`, wid).Scan(&b.WorkspaceID, &b.Currency, &b.MonthlyLimitMicros, &b.PerRunApprovalMicros, &b.EditorCanPublishLibrary, &b.Version, &b.UpdatedAt)
+		return tx.QueryRow(ctx, `select workspace_id::text,currency,monthly_limit_micros,per_run_approval_micros,editor_can_publish_library,version,updated_at from workspace_policies where workspace_id=$1`, wid).Scan(&b.WorkspaceID, &b.Currency, &b.MonthlyLimitMicros, &b.PerRunApprovalThresholdMicros, &b.EditorCanPublishLibrary, &b.Version, &b.UpdatedAt)
 	})
 	return b, err
 }
@@ -409,7 +462,7 @@ func (s *Store) UpdateBudget(ctx context.Context, userID, wid string, expected i
 		if _, err := requireRole(ctx, tx, userID, wid, domain.RoleOwner); err != nil {
 			return err
 		}
-		tag, err := tx.Exec(ctx, `update workspace_policies set currency=$1,monthly_limit_micros=$2,per_run_approval_micros=$3,editor_can_publish_library=$4,version=version+1,updated_by=$5,updated_at=now() where workspace_id=$6 and version=$7`, b.Currency, b.MonthlyLimitMicros, b.PerRunApprovalMicros, b.EditorCanPublishLibrary, userID, wid, expected)
+		tag, err := tx.Exec(ctx, `update workspace_policies set currency=$1,monthly_limit_micros=$2,per_run_approval_micros=$3,editor_can_publish_library=$4,version=version+1,updated_by=$5,updated_at=now() where workspace_id=$6 and version=$7`, b.Currency, b.MonthlyLimitMicros, b.PerRunApprovalThresholdMicros, b.EditorCanPublishLibrary, userID, wid, expected)
 		if err != nil {
 			return err
 		}
@@ -419,7 +472,7 @@ func (s *Store) UpdateBudget(ctx context.Context, userID, wid string, expected i
 		if err := audit(ctx, tx, wid, userID, "budget.updated", "workspace", wid, nil); err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, `select workspace_id::text,currency,monthly_limit_micros,per_run_approval_micros,editor_can_publish_library,version,updated_at from workspace_policies where workspace_id=$1`, wid).Scan(&out.WorkspaceID, &out.Currency, &out.MonthlyLimitMicros, &out.PerRunApprovalMicros, &out.EditorCanPublishLibrary, &out.Version, &out.UpdatedAt)
+		return tx.QueryRow(ctx, `select workspace_id::text,currency,monthly_limit_micros,per_run_approval_micros,editor_can_publish_library,version,updated_at from workspace_policies where workspace_id=$1`, wid).Scan(&out.WorkspaceID, &out.Currency, &out.MonthlyLimitMicros, &out.PerRunApprovalThresholdMicros, &out.EditorCanPublishLibrary, &out.Version, &out.UpdatedAt)
 	})
 	return out, err
 }

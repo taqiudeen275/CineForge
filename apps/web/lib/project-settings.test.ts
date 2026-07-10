@@ -23,17 +23,22 @@ const baseSettings: ProjectSettings = {
 test("serializes project settings form values into the API contract", () => {
   const serialized = serializeProjectSettings(baseSettings, {
     name: "Night Market",
+    projectType: "series",
+    productionFormat: "episodic",
     aspect: "21:9",
     fps: "24000/1001",
     language: "en-GH",
     rating: "mature",
     style: "Noir neon realism",
     quality: "final",
+    costCeiling: "12.5",
   });
 
   expect(serialized).toEqual({
     ...baseSettings,
     name: "Night Market",
+    projectType: "series",
+    productionFormat: "episodic",
     aspectWidth: 21,
     aspectHeight: 9,
     frameRateNumerator: 24000,
@@ -42,6 +47,7 @@ test("serializes project settings form values into the API contract", () => {
     rating: "mature",
     styleDirection: "Noir neon realism",
     qualityPolicy: "final",
+    costCeilingMicros: 12_500_000,
   });
 });
 
